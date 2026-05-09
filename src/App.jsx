@@ -12,7 +12,7 @@ import TLAHome         from './pages/TLAHome';
 import TLABoard        from './pages/TLABoard';
 import ManagerHome        from './pages/ManagerHome';
 import ManagerReports     from './pages/ManagerReports';
-import ManagerAllTickets  from './pages/ManagerAlltickets ';
+import ManagerAllTickets  from './pages/ManagerAlltickets';
 import HelpdeskHome    from './pages/HelpdeskHome';
 import AccessManagement from './pages/AccessManagement';
 
