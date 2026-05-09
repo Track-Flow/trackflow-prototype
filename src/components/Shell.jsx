@@ -129,6 +129,7 @@ function TFLogo({ accent }) {
 
 function RoleToggle({ currentRole, onSwitch }) {
   const [anchor, setAnchor] = useState(null);
+  const navigate = useNavigate();
   const persona  = ROLE_PERSONAS.find(p => p.role === currentRole);
   const accent   = ROLE_ACCENT[currentRole] ?? '#5a8dc4';
   const theme    = useTheme();
@@ -188,7 +189,7 @@ function RoleToggle({ currentRole, onSwitch }) {
           return (
             <MenuItem
               key={p.role}
-              onClick={() => { onSwitch(p.role); setAnchor(null); }}
+              onClick={() => { onSwitch(p.role); navigate(ROLE_HOME[p.role]); setAnchor(null); }}
               sx={{
                 gap: 1.5, py: 1, mx: 1, mb: 0.25, borderRadius: 1,
                 background: isActive ? `${ac}18` : 'transparent',

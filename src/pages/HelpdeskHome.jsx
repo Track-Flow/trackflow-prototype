@@ -57,9 +57,7 @@ function UnroutedCard({ ticket, onRoute }) {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
             <Typography sx={{ fontSize: 11, fontFamily: 'monospace', color: '#5b8ec2' }}>{ticket.id}</Typography>
             <Chip label="UNROUTED" size="small" sx={{ height: 18, fontSize: 9, fontWeight: 700, bgcolor: 'rgba(255,155,208,0.15)', color: '#ff9bd0', border: '1px solid rgba(255,155,208,0.3)' }} />
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
-              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: p.color }} />
-            </Box>
+        
           </Box>
           <Typography
             onClick={() => navigate(`/tickets/${ticket.id}`)}
