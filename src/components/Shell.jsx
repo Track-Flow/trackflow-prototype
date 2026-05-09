@@ -4,6 +4,7 @@ import {
   Box, Drawer, AppBar, Toolbar, Typography, List,
   ListItem, ListItemButton, ListItemIcon, ListItemText,
   IconButton, Avatar, Divider, Menu, MenuItem,
+  useMediaQuery, useTheme,
 } from '@mui/material';
 import { ROLE_PERSONAS, tfUsers } from '../data/mockData';
 
@@ -18,7 +19,6 @@ const TEXT_MUTED  = '#64748b';
 const TEXT_DIM    = '#94a3b8';
 const TEXT_BRIGHT = '#e3e8f0';
 
-// Role accents — all muted, professional
 const ROLE_ACCENT = {
   tla:            '#5a8dc4',
   mss_manager:    '#7a6fa8',
@@ -26,7 +26,6 @@ const ROLE_ACCENT = {
   helpdesk_admin: '#c49a4a',
 };
 
-// Status colours — desaturated
 export const STATUS_COLORS = {
   open:        '#5a8dc4',
   in_progress: '#c49a4a',
@@ -130,8 +129,10 @@ function TFLogo({ accent }) {
 
 function RoleToggle({ currentRole, onSwitch }) {
   const [anchor, setAnchor] = useState(null);
-  const persona = ROLE_PERSONAS.find(p => p.role === currentRole);
-  const accent  = ROLE_ACCENT[currentRole] ?? '#5a8dc4';
+  const persona  = ROLE_PERSONAS.find(p => p.role === currentRole);
+  const accent   = ROLE_ACCENT[currentRole] ?? '#5a8dc4';
+  const theme    = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   return (
     <>
@@ -146,14 +147,21 @@ function RoleToggle({ currentRole, onSwitch }) {
           '&:hover': { borderColor: `${accent}60` },
         }}
       >
-        <Box>
-          <Typography sx={{ fontSize: 9, color: TEXT_MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', lineHeight: 1.3 }}>
-            Viewing as
-          </Typography>
-          <Typography sx={{ fontSize: 12, fontWeight: 600, color: accent, lineHeight: 1.3 }}>
+        {!isMobile && (
+          <Box>
+            <Typography sx={{ fontSize: 9, color: TEXT_MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', lineHeight: 1.3 }}>
+              Viewing as
+            </Typography>
+            <Typography sx={{ fontSize: 12, fontWeight: 600, color: accent, lineHeight: 1.3 }}>
+              {persona?.label ?? 'End User'}
+            </Typography>
+          </Box>
+        )}
+        {isMobile && (
+          <Typography sx={{ fontSize: 12, fontWeight: 600, color: accent }}>
             {persona?.label ?? 'End User'}
           </Typography>
-        </Box>
+        )}
         <span className="material-symbols-outlined" style={{ fontSize: 15, color: TEXT_MUTED }}>unfold_more</span>
       </Box>
 
@@ -203,25 +211,20 @@ function RoleToggle({ currentRole, onSwitch }) {
   );
 }
 
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
+// ─── Sidebar content (shared between permanent + temporary drawer) ─────────────
 
-function Sidebar({ role, accent, user }) {
+function SidebarContent({ role, accent, user, onNavClick }) {
   const navigate = useNavigate();
   const location = useLocation();
   const navItems = NAV[role] ?? [];
 
+  function go(path) {
+    navigate(path);
+    if (onNavClick) onNavClick();
+  }
+
   return (
-    <Drawer
-      variant="permanent"
-      sx={{
-        width: DRAWER_W, flexShrink: 0,
-        '& .MuiDrawer-paper': {
-          width: DRAWER_W, background: BG_SIDEBAR,
-          border: 'none', borderRight: `1px solid ${BORDER}`,
-          display: 'flex', flexDirection: 'column',
-        },
-      }}
-    >
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', background: BG_SIDEBAR }}>
       <TFLogo accent={accent} />
       <Divider sx={{ borderColor: BORDER, mx: 2 }} />
 
@@ -237,7 +240,7 @@ function Sidebar({ role, accent, user }) {
         </Box>
       </Box>
 
-      <List sx={{ flex: 1, px: 1.25, py: 0 }}>
+      <List sx={{ flex: 1, px: 1.25, py: 0, overflowY: 'auto' }}>
         {navItems.map((item, i) => {
           if (item.group) {
             return (
@@ -254,7 +257,7 @@ function Sidebar({ role, accent, user }) {
           return (
             <ListItem key={item.path} disablePadding sx={{ mb: 0.15 }}>
               <ListItemButton
-                onClick={() => navigate(item.path)}
+                onClick={() => go(item.path)}
                 sx={{
                   borderRadius: 1, py: 0.7, px: 1,
                   background: active ? `${accent}18` : 'transparent',
@@ -280,7 +283,7 @@ function Sidebar({ role, accent, user }) {
 
       <Divider sx={{ borderColor: BORDER, mx: 2 }} />
       <Box sx={{ p: 1.75, display: 'flex', alignItems: 'center', gap: 1.25 }}>
-        <Avatar sx={{ width: 30, height: 30, fontSize: 11, fontWeight: 700, bgcolor: `${accent}22`, color: accent }}>
+        <Avatar sx={{ width: 30, height: 30, fontSize: 11, fontWeight: 700, bgcolor: `${accent}22`, color: accent, flexShrink: 0 }}>
           {user?.initials}
         </Avatar>
         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -291,30 +294,46 @@ function Sidebar({ role, accent, user }) {
           <span className="material-symbols-outlined" style={{ fontSize: 17 }}>settings</span>
         </IconButton>
       </Box>
-    </Drawer>
+    </Box>
   );
 }
 
 // ─── Topbar ───────────────────────────────────────────────────────────────────
 
-function Topbar({ title, role, accent, onSwitch }) {
+function Topbar({ title, role, accent, onSwitch, onMenuOpen }) {
+  const theme    = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   return (
     <AppBar position="sticky" elevation={0} sx={{
       background: BG_TOPBAR,
       borderBottom: `1px solid ${BORDER}`,
       height: TOPBAR_H,
     }}>
-      <Toolbar sx={{ minHeight: `${TOPBAR_H}px !important`, gap: 2 }}>
-        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography sx={{ fontSize: 12, color: TEXT_MUTED }}>Workspace</Typography>
-          <span className="material-symbols-outlined" style={{ fontSize: 13, color: TEXT_MUTED }}>chevron_right</span>
-          <Typography sx={{ fontSize: 12.5, fontWeight: 600, color: TEXT_BRIGHT }}>{title}</Typography>
+      <Toolbar sx={{ minHeight: `${TOPBAR_H}px !important`, gap: 1.5 }}>
+
+        {/* Hamburger — mobile only */}
+        {isMobile && (
+          <IconButton size="small" onClick={onMenuOpen} sx={{ color: TEXT_DIM, mr: 0.5 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 22 }}>menu</span>
+          </IconButton>
+        )}
+
+        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+          {!isMobile && (
+            <>
+              <Typography sx={{ fontSize: 12, color: TEXT_MUTED }}>Workspace</Typography>
+              <span className="material-symbols-outlined" style={{ fontSize: 13, color: TEXT_MUTED }}>chevron_right</span>
+            </>
+          )}
+          <Typography sx={{ fontSize: 12.5, fontWeight: 600, color: TEXT_BRIGHT }} noWrap>{title}</Typography>
         </Box>
 
         <RoleToggle currentRole={role} onSwitch={onSwitch} />
 
+        {/* Live pill — hidden on xs */}
         <Box sx={{
-          display: 'inline-flex', alignItems: 'center', gap: 0.6,
+          display: { xs: 'none', sm: 'inline-flex' }, alignItems: 'center', gap: 0.6,
           px: 1, py: 0.35, borderRadius: 1,
           border: `1px solid rgba(90,143,114,0.25)`,
           background: 'rgba(90,143,114,0.08)',
@@ -322,18 +341,15 @@ function Topbar({ title, role, accent, onSwitch }) {
           <Box sx={{
             width: 5, height: 5, borderRadius: '50%', bgcolor: '#5a8f72',
             animation: 'tfpulse 2.5s ease-in-out infinite',
-            '@keyframes tfpulse': {
-              '0%, 100%': { opacity: 1 },
-              '50%':       { opacity: 0.4 },
-            },
+            '@keyframes tfpulse': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.4 } },
           }} />
           <Typography sx={{ fontSize: 10, color: '#5a8f72', fontWeight: 700, letterSpacing: '0.05em' }}>LIVE</Typography>
         </Box>
 
-        <IconButton size="small" sx={{ color: TEXT_MUTED, '&:hover': { color: TEXT_DIM } }}>
+        <IconButton size="small" sx={{ color: TEXT_MUTED, '&:hover': { color: TEXT_DIM }, display: { xs: 'none', sm: 'inline-flex' } }}>
           <span className="material-symbols-outlined" style={{ fontSize: 19 }}>notifications</span>
         </IconButton>
-        <IconButton size="small" sx={{ color: TEXT_MUTED, '&:hover': { color: TEXT_DIM } }}>
+        <IconButton size="small" sx={{ color: TEXT_MUTED, '&:hover': { color: TEXT_DIM }, display: { xs: 'none', sm: 'inline-flex' } }}>
           <span className="material-symbols-outlined" style={{ fontSize: 19 }}>help</span>
         </IconButton>
       </Toolbar>
@@ -344,17 +360,56 @@ function Topbar({ title, role, accent, onSwitch }) {
 // ─── Shell ────────────────────────────────────────────────────────────────────
 
 export default function Shell({ children, role, onRoleSwitch }) {
-  const location = useLocation();
-  const accent   = ROLE_ACCENT[role] ?? '#5a8dc4';
-  const user     = getActiveUser();
-  const title    = PAGE_TITLES[location.pathname] ?? 'TrackFlow';
+  const location    = useLocation();
+  const theme       = useTheme();
+  const isMobile    = useMediaQuery(theme.breakpoints.down('md'));
+  const [open, setOpen] = useState(false);
+
+  const accent = ROLE_ACCENT[role] ?? '#5a8dc4';
+  const user   = getActiveUser();
+  const title  = PAGE_TITLES[location.pathname] ?? 'TrackFlow';
+
+  const drawerProps = {
+    sx: {
+      width: DRAWER_W, flexShrink: 0,
+      '& .MuiDrawer-paper': {
+        width: DRAWER_W,
+        border: 'none',
+        borderRight: `1px solid ${BORDER}`,
+      },
+    },
+  };
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', background: BG_MAIN }}>
-      <Sidebar role={role} accent={accent} user={user} />
+
+      {/* Desktop — permanent */}
+      {!isMobile && (
+        <Drawer variant="permanent" {...drawerProps}>
+          <SidebarContent role={role} accent={accent} user={user} />
+        </Drawer>
+      )}
+
+      {/* Mobile — temporary overlay */}
+      {isMobile && (
+        <Drawer
+          variant="temporary"
+          open={open}
+          onClose={() => setOpen(false)}
+          ModalProps={{ keepMounted: true }}
+          {...drawerProps}
+        >
+          <SidebarContent role={role} accent={accent} user={user} onNavClick={() => setOpen(false)} />
+        </Drawer>
+      )}
+
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <Topbar title={title} role={role} accent={accent} onSwitch={onRoleSwitch} />
-        <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
+        <Topbar
+          title={title} role={role} accent={accent}
+          onSwitch={onRoleSwitch}
+          onMenuOpen={() => setOpen(true)}
+        />
+        <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1.5, sm: 2, md: 3 } }}>
           {children}
         </Box>
       </Box>

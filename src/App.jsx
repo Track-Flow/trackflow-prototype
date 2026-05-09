@@ -10,8 +10,9 @@ import MyTickets       from './pages/MyTickets';
 import TicketDetail    from './pages/TicketDetail';
 import TLAHome         from './pages/TLAHome';
 import TLABoard        from './pages/TLABoard';
-import ManagerHome     from './pages/ManagerHome';
-import ManagerReports  from './pages/ManagerReports';
+import ManagerHome        from './pages/ManagerHome';
+import ManagerReports     from './pages/ManagerReports';
+import ManagerAllTickets  from './pages/ManagerAllTickets';
 import HelpdeskHome    from './pages/HelpdeskHome';
 import AccessManagement from './pages/AccessManagement';
 
@@ -21,11 +22,11 @@ import { Box, Typography } from '@mui/material';
 function Stub({ title, icon = 'construction' }) {
   return (
     <Box sx={{ textAlign: 'center', pt: 8 }}>
-      <span className="material-symbols-outlined" style={{ fontSize: 48, color: '#3a4f6a', display: 'block', marginBottom: 16 }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 48, color: '#475569', display: 'block', marginBottom: 16 }}>
         {icon}
       </span>
-      <Typography variant="h5" sx={{ color: '#e6edf7', mb: 1 }}>{title}</Typography>
-      <Typography sx={{ color: '#8fa2c0', fontSize: 13 }}>This page is not included in the prototype.</Typography>
+      <Typography variant="h5" sx={{ color: '#e3e8f0', mb: 1 }}>{title}</Typography>
+      <Typography sx={{ color: '#94a3b8', fontSize: 13 }}>This page is not included in the prototype.</Typography>
     </Box>
   );
 }
@@ -79,7 +80,8 @@ export default function App() {
           {/* ── MSS Manager ── */}
           <Route path="/manager"         element={wrap(<ManagerHome extraTickets={extraTickets} />)} />
           <Route path="/manager/reports" element={wrap(<ManagerReports />)} />
-          <Route path="/manager/tickets" element={wrap(<Stub title="All Tickets" icon="confirmation_number" />)} />
+                    <Route path="/manager/tickets" element={wrap(<ManagerAllTickets extraTickets={extraTickets} />)} />
+
           <Route path="/manager/tlas"    element={wrap(<Stub title="TLA Management" icon="badge" />)} />
 
           {/* ── Help Desk ── */}

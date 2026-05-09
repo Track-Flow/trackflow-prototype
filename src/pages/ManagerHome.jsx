@@ -4,74 +4,56 @@ import {
   Box, Typography, Card, Chip, Button, Avatar,
   Table, TableBody, TableCell, TableHead, TableRow, LinearProgress,
 } from '@mui/material';
-import {
-  tfTickets, tfUsers, tfDeptLoad, tfActivity,
-  getStatus, timeAgo, getUser,
-} from '../data/mockData';
+import { tfTickets, tfDeptLoad, tfActivity, getStatus, timeAgo, getUser } from '../data/mockData';
 
-const ACCENT     = '#ff9bd0';
-const TEXT_DIM   = '#8fa2c0';
-const TEXT_BRIGHT= '#e6edf7';
-const BORDER     = 'rgba(143,162,192,0.12)';
+const ACCENT     = '#7a6fa8';
+const TEXT_DIM   = '#94a3b8';
+const TEXT_BRIGHT= '#e3e8f0';
+const BORDER     = 'rgba(148,163,184,0.10)';
+const PAPER      = '#111d2e';
+const PAPER2     = '#0c1422';
 
-function KpiCard({ label, value, color, sub, icon }) {
+function KpiCard({ label, value, color, icon, sub }) {
   return (
-    <Card sx={{ flex: '1 1 150px', p: 2.5 }}>
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1 }}>
-        <Typography sx={{ fontSize: 10.5, color: TEXT_DIM, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-          {label}
-        </Typography>
-        <span className="material-symbols-outlined" style={{ fontSize: 16, color: `${color}99` }}>{icon}</span>
+    <Card sx={{ flex: '1 1 130px', p: { xs: 1.75, md: 2.5 } }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.75 }}>
+        <Typography sx={{ fontSize: 10.5, color: TEXT_DIM, fontWeight: 600, letterSpacing: '0.09em', textTransform: 'uppercase' }}>{label}</Typography>
+        <span className="material-symbols-outlined" style={{ fontSize: 16, color }}>{icon}</span>
       </Box>
-      <Typography sx={{ fontSize: 32, fontWeight: 800, color, fontFamily: '"Rubik", sans-serif', lineHeight: 1 }}>
-        {value}
-      </Typography>
+      <Typography sx={{ fontSize: { xs: 24, md: 30 }, fontWeight: 800, color, fontFamily: '"Rubik", sans-serif', lineHeight: 1 }}>{value}</Typography>
       {sub && <Typography sx={{ fontSize: 11, color: TEXT_DIM, mt: 0.5 }}>{sub}</Typography>}
     </Card>
   );
 }
 
 function DeptBar({ dept }) {
-  const total   = dept.open + dept.resolved;
-  const pct     = total > 0 ? Math.round((dept.resolved / total) * 100) : 0;
+  const total = dept.open + dept.resolved;
+  const pct   = total > 0 ? Math.round((dept.resolved / total) * 100) : 0;
   return (
     <Box sx={{ mb: 2 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75, flexWrap: 'wrap', gap: 0.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: dept.color }} />
+          <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: dept.color }} />
           <Typography sx={{ fontSize: 12.5, color: TEXT_BRIGHT, fontWeight: 600 }}>{dept.name}</Typography>
-          {dept.breach > 0 && (
-            <Chip label={`${dept.breach} breach`} size="small" sx={{ height: 16, fontSize: 9, fontWeight: 700, bgcolor: 'rgba(255,107,107,0.15)', color: '#ff6b6b' }} />
-          )}
+          {dept.breach > 0 && <Chip label={`${dept.breach} breach`} size="small" sx={{ height: 16, fontSize: 9, fontWeight: 700, bgcolor: 'rgba(184,92,82,0.15)', color: '#b85c52' }} />}
         </Box>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <Typography sx={{ fontSize: 11, color: '#ffb547' }}>{dept.open} open</Typography>
-          <Typography sx={{ fontSize: 11, color: '#2bd48f' }}>{dept.resolved} resolved</Typography>
+        <Box sx={{ display: 'flex', gap: 1.5 }}>
+          <Typography sx={{ fontSize: 11, color: '#c49a4a' }}>{dept.open} open</Typography>
+          <Typography sx={{ fontSize: 11, color: '#5a8f72' }}>{dept.resolved} resolved</Typography>
         </Box>
       </Box>
-      <LinearProgress
-        variant="determinate"
-        value={pct}
-        sx={{
-          height: 6, borderRadius: 3,
-          bgcolor: 'rgba(143,162,192,0.1)',
-          '& .MuiLinearProgress-bar': { bgcolor: dept.color, borderRadius: 3 },
-        }}
-      />
+      <LinearProgress variant="determinate" value={pct} sx={{
+        height: 5, borderRadius: 3,
+        bgcolor: 'rgba(148,163,184,0.1)',
+        '& .MuiLinearProgress-bar': { bgcolor: dept.color, borderRadius: 3 },
+      }} />
     </Box>
   );
 }
 
 function ActivityItem({ item }) {
-  const iconMap = {
-    created:  { icon: 'add_circle',   color: '#2ec8ff' },
-    route:    { icon: 'alt_route',    color: '#ff9bd0' },
-    status:   { icon: 'sync',         color: '#ffb547' },
-    comment:  { icon: 'chat',         color: '#c084fc' },
-    assigned: { icon: 'person_add',   color: '#6fdcff' },
-    resolved: { icon: 'check_circle', color: '#2bd48f' },
-  };
-  const meta = iconMap[item.kind] ?? { icon: 'info', color: '#8fa2c0' };
+  const iconMap = { created: { icon: 'add_circle', color: '#5a8dc4' }, route: { icon: 'alt_route', color: '#7a6fa8' }, status: { icon: 'sync', color: '#c49a4a' }, comment: { icon: 'chat', color: '#7a6fa8' }, assigned: { icon: 'person_add', color: '#5a8dc4' }, resolved: { icon: 'check_circle', color: '#5a8f72' } };
+  const meta = iconMap[item.kind] ?? { icon: 'info', color: '#64748b' };
   return (
     <Box sx={{ display: 'flex', gap: 1.5, mb: 1.75 }}>
       <Box sx={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, bgcolor: `${meta.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -91,100 +73,74 @@ export default function ManagerHome({ extraTickets = [] }) {
   const navigate   = useNavigate();
   const allTickets = [...extraTickets, ...tfTickets];
 
-  const countByStatus = (key) => allTickets.filter(t => t.status === key).length;
-  const slaBreaches   = allTickets.filter(t => t.status === 'in_progress').length;
-  const resolvedToday = allTickets.filter(t => ['resolved', 'closed'].includes(t.status)).length;
-
-  // Recent tickets for the table (last 6)
+  const countByStatus = key => allTickets.filter(t => t.status === key).length;
   const recentTickets = [...allTickets].slice(0, 6);
 
   return (
     <Box>
-      {/* Header */}
-      <Box sx={{ mb: 3 }}>
-        <Typography sx={{ fontSize: 11, color: ACCENT, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', mb: 0.5 }}>
-          MSS Operations
-        </Typography>
-        <Typography variant="h4" sx={{ color: TEXT_BRIGHT }}>University-wide overview</Typography>
+      <Box sx={{ mb: 2.5 }}>
+        <Typography sx={{ fontSize: 10.5, color: ACCENT, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', mb: 0.5 }}>MSS Operations</Typography>
+        <Typography variant="h4" sx={{ fontSize: { xs: '1.5rem', md: '2rem' }, color: TEXT_BRIGHT }}>University-wide overview</Typography>
       </Box>
 
-      {/* KPIs */}
-      <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-        <KpiCard label="Open"           value={countByStatus('open')}        color="#2ec8ff" icon="radio_button_unchecked" />
-        <KpiCard label="In Progress"    value={countByStatus('in_progress')} color="#ffb547" icon="pending"                />
-        <KpiCard label="Resolved today" value={resolvedToday}                color="#2bd48f" icon="check_circle"           />
-        <KpiCard label="SLA breaches"   value={slaBreaches}                  color="#ff6b6b" icon="warning"
-          sub={slaBreaches > 0 ? 'Needs attention' : 'All clear'} />
-        <KpiCard label="Unrouted"       value={countByStatus('unrouted')}    color="#ff9bd0" icon="alt_route"
-          sub="Pending help desk" />
+      {/* KPIs — wrap to 2 cols on mobile */}
+      <Box sx={{ display: 'flex', gap: { xs: 1.5, md: 2 }, mb: 3, flexWrap: 'wrap' }}>
+        <KpiCard label="Open"          value={countByStatus('open')}        color="#5a8dc4" icon="radio_button_unchecked" />
+        <KpiCard label="In Progress"   value={countByStatus('in_progress')} color="#c49a4a" icon="pending"                />
+        <KpiCard label="Resolved"      value={allTickets.filter(t => ['resolved','closed'].includes(t.status)).length} color="#5a8f72" icon="check_circle" />
+        <KpiCard label="SLA Breaches"  value={allTickets.filter(t => t.status === 'in_progress').length} color="#b85c52" icon="warning" sub="Urgent + in progress" />
+        <KpiCard label="Unrouted"      value={countByStatus('unrouted')}    color="#7a6fa8" icon="alt_route" sub="Pending help desk" />
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <Box sx={{ display: 'flex', gap: { xs: 2, md: 3 }, flexWrap: 'wrap', alignItems: 'flex-start' }}>
 
-        {/* Recent tickets table */}
-        <Card sx={{ flex: '1 1 500px', p: 3 }}>
+        {/* Recent tickets */}
+        <Card sx={{ flex: '1 1 100%', p: { xs: 2, md: 3 } }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
             <Typography sx={{ fontSize: 13, fontWeight: 700, color: TEXT_BRIGHT }}>Recent tickets</Typography>
-            <Button size="small" onClick={() => navigate('/manager/tickets')}
-              endIcon={<span className="material-symbols-outlined" style={{ fontSize: 14 }}>arrow_forward</span>}
-              sx={{ fontSize: 11, color: ACCENT }}>
-              View all
-            </Button>
+            <Button size="small" onClick={() => navigate('/manager/tickets')} endIcon={<span className="material-symbols-outlined" style={{ fontSize: 13 }}>arrow_forward</span>} sx={{ fontSize: 11, color: ACCENT }}>View all</Button>
           </Box>
-
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                {['ID', 'Title', 'Dept',  'Status', 'Updated'].map(h => (
-                  <TableCell key={h} sx={{ fontSize: 10.5, fontWeight: 700, color: TEXT_DIM, borderColor: BORDER, textTransform: 'uppercase', letterSpacing: '0.08em', pb: 1 }}>
-                    {h}
-                  </TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {recentTickets.map(t => {
-                const s = getStatus(t.status);
-                return (
-                  <TableRow
-                    key={t.id}
-                    onClick={() => navigate(`/tickets/${t.id}`)}
-                    sx={{ cursor: 'pointer', '&:hover td': { bgcolor: 'rgba(255,155,208,0.04)' } }}
-                  >
-                    <TableCell sx={{ fontSize: 11, fontFamily: 'monospace', color: '#5b8ec2', borderColor: BORDER }}>{t.id}</TableCell>
-                    <TableCell sx={{ fontSize: 12.5, color: TEXT_BRIGHT, borderColor: BORDER, maxWidth: 200 }}>
-                      <Typography noWrap sx={{ fontSize: 12.5, color: TEXT_BRIGHT }}>{t.title}</Typography>
-                    </TableCell>
-                    <TableCell sx={{ borderColor: BORDER }}>
-                      <Typography sx={{ fontSize: 11, color: TEXT_DIM, textTransform: 'capitalize' }}>{t.dept ?? 'Unrouted'}</Typography>
-                    </TableCell>
-                    
-                    <TableCell sx={{ borderColor: BORDER }}>
-                      <Chip label={s.label} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: `${s.color}20`, color: s.color }} />
-                    </TableCell>
-                    <TableCell sx={{ fontSize: 11, color: TEXT_DIM, borderColor: BORDER }}>{timeAgo(t.updatedAt)}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <Box sx={{ overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 500 }}>
+              <TableHead>
+                <TableRow>
+                  {['ID', 'Title', 'Dept', 'Status', 'Updated'].map(h => (
+                    <TableCell key={h} sx={{ fontSize: 10.5, fontWeight: 700, color: TEXT_DIM, borderColor: BORDER, textTransform: 'uppercase', letterSpacing: '0.08em', pb: 1, bgcolor: PAPER2, whiteSpace: 'nowrap' }}>{h}</TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {recentTickets.map(t => {
+                  const s = getStatus(t.status);
+                  return (
+                    <TableRow key={t.id} onClick={() => navigate(`/tickets/${t.id}`)} sx={{ cursor: 'pointer', '&:hover td': { bgcolor: 'rgba(122,111,168,0.05)' } }}>
+                      <TableCell sx={{ fontSize: 11, fontFamily: 'monospace', color: ACCENT, borderColor: BORDER, whiteSpace: 'nowrap' }}>{t.id}</TableCell>
+                      <TableCell sx={{ borderColor: BORDER, maxWidth: 180 }}><Typography noWrap sx={{ fontSize: 12.5, color: TEXT_BRIGHT }}>{t.title}</Typography></TableCell>
+                      <TableCell sx={{ borderColor: BORDER }}><Typography sx={{ fontSize: 11, color: TEXT_DIM, textTransform: 'capitalize', whiteSpace: 'nowrap' }}>{t.dept ?? 'Unrouted'}</Typography></TableCell>
+                   
+                      <TableCell sx={{ borderColor: BORDER }}>
+                        <Chip label={s.label} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: `${s.color}20`, color: s.color }} />
+                      </TableCell>
+                      <TableCell sx={{ fontSize: 11, color: TEXT_DIM, borderColor: BORDER, whiteSpace: 'nowrap' }}>{timeAgo(t.updatedAt)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Box>
         </Card>
 
-        {/* Right column */}
-        <Box sx={{ flex: '0 1 300px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-
-          {/* Department load */}
-          <Card sx={{ p: 3 }}>
+        {/* Dept load + activity side by side on large, stacked on small */}
+        <Box sx={{ display: 'flex', gap: { xs: 2, md: 2 }, flexWrap: 'wrap', flex: '1 1 100%' }}>
+          <Card sx={{ flex: '1 1 260px', p: { xs: 2, md: 3 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
               <Typography sx={{ fontSize: 13, fontWeight: 700, color: TEXT_BRIGHT }}>Department load</Typography>
-              <Button size="small" onClick={() => navigate('/manager/reports')}
-                sx={{ fontSize: 11, color: ACCENT }}>Reports →</Button>
+              <Button size="small" onClick={() => navigate('/manager/reports')} sx={{ fontSize: 11, color: ACCENT }}>Reports →</Button>
             </Box>
             {tfDeptLoad.map(d => <DeptBar key={d.name} dept={d} />)}
           </Card>
 
-          {/* Live activity */}
-          <Card sx={{ p: 3 }}>
+          <Card sx={{ flex: '1 1 260px', p: { xs: 2, md: 3 } }}>
             <Typography sx={{ fontSize: 13, fontWeight: 700, color: TEXT_BRIGHT, mb: 2 }}>Live activity</Typography>
             {tfActivity.map((item, i) => <ActivityItem key={i} item={item} />)}
           </Card>

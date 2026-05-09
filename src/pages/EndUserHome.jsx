@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Button, Card, Chip } from '@mui/material';
 import { tfTickets, getStatus, timeAgo } from '../data/mockData';
 
-const ACCENT    = '#6fdcff';
-const TEXT_DIM  = '#8fa2c0';
-const TEXT_BRIGHT = '#e6edf7';
-const BORDER    = 'rgba(143,162,192,0.12)';
+const ACCENT = '#5a8dc4';
+const TEXT_DIM = '#94a3b8';
+const TEXT_BRIGHT = '#e3e8f0';
+const BORDER = 'rgba(148,163,184,0.10)';
 
 // Only show tickets belonging to Thando (userId 9)
 const MY_TICKETS = tfTickets.filter(t => t.requesterId === 9);
@@ -30,10 +30,10 @@ function StatusBadge({ status }) {
 
 function CategoryDot({ category }) {
   const colors = {
-    'IT Support': '#2ec8ff', 'Facilities': '#ffb547',
-    'Administration': '#c084fc', 'Library Services': '#2bd48f', 'Other': '#ff9bd0',
+    'IT Support': '#5a8dc4', 'Facilities': '#c49a4a',
+    'Administration': '#7a6fa8', 'Library Services': '#5a8f72', 'Other': '#7a6fa8',
   };
-  const color = colors[category] ?? '#8fa2c0';
+  const color = colors[category] ?? '#94a3b8';
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
       <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: color }} />
@@ -58,14 +58,14 @@ function TicketRow({ ticket, onClick }) {
     >
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
-          <Typography sx={{ fontSize: 11, fontFamily: 'monospace', color: '#5b8ec2' }}>
+          <Typography sx={{ fontSize: 11, fontFamily: 'monospace', color: '#0ea5e9' }}>
             {ticket.id}
           </Typography>
           <CategoryDot category={ticket.category} />
         </Box>
         <Typography
           className="ticket-title"
-          sx={{ fontSize: 13.5, fontWeight: 600, color: TEXT_BRIGHT, mb: 0.3, transition: 'color 0.15s' }}
+          sx={{ fontSize: 13.5, fontWeight: 600, color: '#e3e8f0', mb: 0.3, transition: 'color 0.15s' }}
           noWrap
         >
           {ticket.title}
@@ -96,22 +96,22 @@ export default function EndUserHome({ extraTickets = [] }) {
         }}>
           Welcome back, Thando
         </Typography>
-        <Typography variant="h4" sx={{ color: TEXT_BRIGHT }}>
+        <Typography variant="h4" sx={{ fontSize: { xs: '1.4rem', md: '2.125rem' }, color: '#e3e8f0' }}>
           How can we help you today?
         </Typography>
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'flex', gap: { xs: 2, md: 3 }, flexWrap: 'wrap' }}>
 
         {/* Quick actions card */}
-        <Card sx={{ flex: '1 1 340px', p: 3 }}>
+        <Card sx={{ flex: '1 1 280px', p: 3 }}>
           <Typography sx={{
             fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
             textTransform: 'uppercase', color: ACCENT, mb: 1.5,
           }}>
             Quick Actions
           </Typography>
-          <Typography variant="h6" sx={{ color: TEXT_BRIGHT, mb: 2.5 }}>
+          <Typography variant="h6" sx={{ color: '#e3e8f0', mb: 2.5 }}>
             Need something?
           </Typography>
 
@@ -142,15 +142,15 @@ export default function EndUserHome({ extraTickets = [] }) {
           {/* Tip */}
           <Box sx={{
             mt: 2.5, p: 1.75, borderRadius: 2,
-            background: 'rgba(111,220,255,0.06)',
-            border: '1px solid rgba(111,220,255,0.12)',
+            background: 'rgba(90,141,196,0.06)',
+            border: '1px solid rgba(37,99,235,0.12)',
           }}>
             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
               <Typography sx={{ fontSize: 14 }}>💡</Typography>
               <Box>
                 <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ACCENT, mb: 0.25 }}>Tip</Typography>
                 <Typography sx={{ fontSize: 12, color: TEXT_DIM, lineHeight: 1.5 }}>
-                  Choose <strong style={{ color: TEXT_BRIGHT }}>Other</strong> if no category fits —
+                  Choose <strong style={{ color: '#e3e8f0' }}>Other</strong> if no category fits —
                   Help-desk admin will route it for you.
                 </Typography>
               </Box>
@@ -159,7 +159,7 @@ export default function EndUserHome({ extraTickets = [] }) {
         </Card>
 
         {/* My tickets card */}
-        <Card sx={{ flex: '1 1 400px', p: 3 }}>
+        <Card sx={{ flex: '1 1 280px', p: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
             <Box>
               <Typography sx={{
@@ -168,7 +168,7 @@ export default function EndUserHome({ extraTickets = [] }) {
               }}>
                 {activeTickets.length} Active
               </Typography>
-              <Typography variant="h6" sx={{ color: TEXT_BRIGHT }}>My tickets</Typography>
+              <Typography variant="h6" sx={{ color: '#e3e8f0' }}>My tickets</Typography>
             </Box>
             <Button
               size="small"
