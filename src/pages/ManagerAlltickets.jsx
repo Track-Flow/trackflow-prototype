@@ -1,24 +1,25 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Card, Chip, TextField, InputAdornment,
+  Box, Typography, Card, TextField, InputAdornment,
   Button, Select, MenuItem, FormControl, useTheme, useMediaQuery,
 } from '@mui/material';
-import { tfTickets, tfDepartments, getStatus, timeAgo } from '../data/mockData';
+import { tfDepartments, getStatus, timeAgo } from '../data/mockData';
+import { useTickets } from '../context/TicketContext';
 
-const ACCENT     = '#7a6fa8';
-const TEXT_DIM   = '#94a3b8';
-const TEXT_BRIGHT= '#e3e8f0';
-const BORDER     = 'rgba(148,163,184,0.10)';
-const PAPER      = '#111d2e';
-const PAPER2     = '#0c1422';
+const ACCENT      = '#7a6fa8';
+const TEXT_DIM    = '#94a3b8';
+const TEXT_BRIGHT = '#e3e8f0';
+const BORDER      = 'rgba(148,163,184,0.10)';
+const PAPER       = '#111d2e';
+const PAPER2      = '#0c1422';
 
 const CAT_COLORS = { 'IT Support': '#5a8dc4', 'Facilities': '#c49a4a', 'Administration': '#7a6fa8', 'Library Services': '#5a8f72', 'Other': '#7a6fa8' };
 
 function TableHeader() {
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: '100px 1fr 160px 110px 110px 90px', gap: 2, px: 2.5, py: 1.25, borderBottom: `1px solid ${BORDER}`, bgcolor: PAPER2 }}>
-      {['ID', 'Subject', 'Department','Status', 'Updated'].map(h => (
+      {['ID', 'Subject', 'Department', 'Status', 'Updated'].map(h => (
         <Typography key={h} sx={{ fontSize: 10.5, fontWeight: 700, color: TEXT_DIM, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</Typography>
       ))}
     </Box>
@@ -43,7 +44,6 @@ function TableRow({ ticket, onClick }) {
           <Typography sx={{ fontSize: 11, color: catColor, fontWeight: 600 }}>{ticket.category}</Typography>
         </Box>
       )}
- 
       <Box sx={{ display: 'inline-block', px: 1.25, py: 0.3, borderRadius: 1, fontSize: 10.5, fontWeight: 700, bgcolor: `${s.color}18`, color: s.color, border: `1px solid ${s.color}44`, width: 'fit-content' }}>
         {s.label.toUpperCase()}
       </Box>
@@ -58,10 +58,7 @@ function MobileCard({ ticket, onClick }) {
   return (
     <Box onClick={onClick} sx={{ p: 2, borderBottom: `1px solid ${BORDER}`, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(122,111,168,0.05)' }, '&:last-child': { borderBottom: 'none' } }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.75 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-          <Typography sx={{ fontFamily: 'monospace', fontSize: 11.5, color: ACCENT, fontWeight: 600 }}>{ticket.id}</Typography>
-        
-        </Box>
+        <Typography sx={{ fontFamily: 'monospace', fontSize: 11.5, color: ACCENT, fontWeight: 600 }}>{ticket.id}</Typography>
         <Box sx={{ px: 1, py: 0.25, borderRadius: 1, fontSize: 10, fontWeight: 700, bgcolor: `${s.color}18`, color: s.color, border: `1px solid ${s.color}33`, flexShrink: 0, ml: 1 }}>
           {s.label.toUpperCase()}
         </Box>
@@ -80,11 +77,14 @@ export default function ManagerAllTickets({ extraTickets = [] }) {
   const navigate  = useNavigate();
   const theme     = useTheme();
   const isMobile  = useMediaQuery(theme.breakpoints.down('md'));
+  const { tickets } = useTickets();
+
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [deptFilter,   setDeptFilter]   = useState('all');
 
-  const ALL = [...extraTickets, ...tfTickets];
+  const ALL = [...extraTickets, ...tickets];
+
   const displayed = ALL.filter(t => {
     const matchStatus = statusFilter === 'all' || t.status === statusFilter;
     const matchDept   = deptFilter === 'all' || t.dept === deptFilter || (deptFilter === 'unrouted' && !t.dept);
@@ -102,7 +102,6 @@ export default function ManagerAllTickets({ extraTickets = [] }) {
         <Typography sx={{ fontSize: 13, color: TEXT_DIM, mt: 0.5 }}>{ALL.length} total · {displayed.length} shown</Typography>
       </Box>
 
-      {/* Filters */}
       <Box sx={{ display: 'flex', gap: 1, mb: 2.5, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           size="small" placeholder="Search tickets…" value={search}
@@ -113,7 +112,7 @@ export default function ManagerAllTickets({ extraTickets = [] }) {
         <FormControl size="small" sx={{ flex: '1 1 130px', minWidth: 0 }}>
           <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} sx={selectSx}>
             <MenuItem value="all">All statuses</MenuItem>
-            {['open','in_progress','pending','unrouted','resolved','closed'].map(s => {
+            {['open', 'in_progress', 'pending', 'unrouted', 'resolved', 'closed'].map(s => {
               const meta = getStatus(s);
               return <MenuItem key={s} value={s}><Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: meta.color }} />{meta.label}</Box></MenuItem>;
             })}

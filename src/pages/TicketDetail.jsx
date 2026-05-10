@@ -4,7 +4,8 @@ import {
   Box, Typography, Card, Chip, Button, TextField,
   Avatar, Divider,
 } from '@mui/material';
-import { tfTickets, tfUsers, getStatus, timeAgo, getUser } from '../data/mockData';
+import { tfTickets, getStatus, timeAgo, getUser } from '../data/mockData';
+import { useTickets } from '../context/TicketContext';
 
 const TEXT_DIM   = '#8fa2c0';
 const TEXT_BRIGHT= '#e6edf7';
@@ -15,7 +16,6 @@ const CAT_COLORS = {
   'Administration': '#c084fc', 'Library Services': '#2bd48f', 'Other': '#ff9bd0',
 };
 
-// Static mock comments per ticket
 const MOCK_COMMENTS = {
   'TF-1842': [
     { id: 1, authorId: 1, text: 'Hi Thando, I can see the issue on our end. Your VPN session is timing out at the gateway. Can you confirm which version of GlobalProtect you\'re running?', createdAt: '2025-04-22T09:00:00Z' },
@@ -31,8 +31,6 @@ function StatusChip({ status }) {
   const s = getStatus(status);
   return <Chip label={s.label} size="small" sx={{ fontSize: 11, fontWeight: 700, height: 24, bgcolor: `${s.color}20`, color: s.color, border: `1px solid ${s.color}44` }} />;
 }
-
-
 
 function CommentBubble({ comment }) {
   const author = getUser(comment.authorId);
@@ -72,14 +70,18 @@ function InfoRow({ label, children }) {
 }
 
 export default function TicketDetail({ extraTickets = [] }) {
-  const { id }     = useParams();
-  const navigate   = useNavigate();
-  const ticket     = [...extraTickets, ...tfTickets].find(t => t.id === id);
-  const [reply, setReply] = useState('');
-  const [comments, setComments] = useState(MOCK_COMMENTS[id] ?? []);
-  const [sending, setSending]   = useState(false);
+  const { id }   = useParams();
+  const navigate = useNavigate();
+  const { tickets } = useTickets();
 
-  if (!ticket) {
+  // Find base ticket from context (has live status) or extraTickets fallback
+  const baseTicket = [...extraTickets, ...tickets].find(t => t.id === id);
+
+  const [reply,    setReply]    = useState('');
+  const [comments, setComments] = useState(MOCK_COMMENTS[id] ?? []);
+  const [sending,  setSending]  = useState(false);
+
+  if (!baseTicket) {
     return (
       <Box sx={{ textAlign: 'center', pt: 8 }}>
         <Typography variant="h5" sx={{ color: TEXT_BRIGHT, mb: 1 }}>Ticket not found</Typography>
@@ -89,9 +91,9 @@ export default function TicketDetail({ extraTickets = [] }) {
     );
   }
 
-  const requester = getUser(ticket.requesterId);
-  const assignee  = ticket.assigneeId ? getUser(ticket.assigneeId) : null;
-  const catColor  = CAT_COLORS[ticket.category] ?? '#8fa2c0';
+  const requester = getUser(baseTicket.requesterId);
+  const assignee  = baseTicket.assigneeId ? getUser(baseTicket.assigneeId) : null;
+  const catColor  = CAT_COLORS[baseTicket.category] ?? '#8fa2c0';
 
   function handleSend() {
     if (!reply.trim()) return;
@@ -110,7 +112,6 @@ export default function TicketDetail({ extraTickets = [] }) {
 
   return (
     <Box>
-      {/* Back button */}
       <Button
         startIcon={<span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_back</span>}
         onClick={() => navigate(-1)}
@@ -123,23 +124,22 @@ export default function TicketDetail({ extraTickets = [] }) {
 
         {/* Main content */}
         <Box sx={{ flex: '1 1 480px', minWidth: 0 }}>
-          {/* Header */}
           <Card sx={{ p: 3, mb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-              <Typography sx={{ fontSize: 12, fontFamily: 'monospace', color: '#5b8ec2' }}>{ticket.id}</Typography>
+              <Typography sx={{ fontSize: 12, fontFamily: 'monospace', color: '#5b8ec2' }}>{baseTicket.id}</Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: catColor }} />
-                <Typography sx={{ fontSize: 12, color: catColor }}>{ticket.category}</Typography>
+                <Typography sx={{ fontSize: 12, color: catColor }}>{baseTicket.category}</Typography>
               </Box>
-              <StatusChip status={ticket.status} />
+              <StatusChip status={baseTicket.status} />
             </Box>
 
             <Typography variant="h5" sx={{ color: TEXT_BRIGHT, mb: 1.5 }}>
-              {ticket.title}
+              {baseTicket.title}
             </Typography>
 
             <Typography sx={{ fontSize: 13.5, color: TEXT_DIM, lineHeight: 1.7 }}>
-              {ticket.description}
+              {baseTicket.description}
             </Typography>
           </Card>
 
@@ -157,24 +157,20 @@ export default function TicketDetail({ extraTickets = [] }) {
 
             <Divider sx={{ borderColor: BORDER, mb: 2 }} />
 
-            {/* Reply box */}
             <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
               <Avatar sx={{ width: 32, height: 32, fontSize: 11, fontWeight: 700, bgcolor: 'rgba(111,220,255,0.2)', color: '#6fdcff', flexShrink: 0 }}>
                 TK
               </Avatar>
               <Box sx={{ flex: 1 }}>
                 <TextField
-                  fullWidth
-                  multiline
-                  rows={3}
+                  fullWidth multiline rows={3}
                   placeholder="Add a reply or update…"
                   value={reply}
                   onChange={e => setReply(e.target.value)}
                   sx={{ mb: 1 }}
                 />
                 <Button
-                  variant="contained"
-                  size="small"
+                  variant="contained" size="small"
                   disabled={!reply.trim() || sending}
                   onClick={handleSend}
                   endIcon={<span className="material-symbols-outlined" style={{ fontSize: 14 }}>send</span>}
@@ -186,23 +182,22 @@ export default function TicketDetail({ extraTickets = [] }) {
           </Card>
         </Box>
 
-        {/* Sidebar info */}
+        {/* Sidebar */}
         <Box sx={{ flex: '0 0 260px' }}>
           <Card sx={{ p: 2.5 }}>
             <Typography sx={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1.5 }}>
               Ticket info
             </Typography>
 
-            <InfoRow label="Status"><StatusChip status={ticket.status} /></InfoRow>
+            <InfoRow label="Status"><StatusChip status={baseTicket.status} /></InfoRow>
             <InfoRow label="Category">
-              <Typography sx={{ fontSize: 12.5, color: catColor, fontWeight: 600 }}>{ticket.category}</Typography>
+              <Typography sx={{ fontSize: 12.5, color: catColor, fontWeight: 600 }}>{baseTicket.category}</Typography>
             </InfoRow>
-
             <InfoRow label="Submitted">
-              <Typography sx={{ fontSize: 12, color: TEXT_BRIGHT }}>{timeAgo(ticket.createdAt)}</Typography>
+              <Typography sx={{ fontSize: 12, color: TEXT_BRIGHT }}>{timeAgo(baseTicket.createdAt)}</Typography>
             </InfoRow>
             <InfoRow label="Updated">
-              <Typography sx={{ fontSize: 12, color: TEXT_BRIGHT }}>{timeAgo(ticket.updatedAt)}</Typography>
+              <Typography sx={{ fontSize: 12, color: TEXT_BRIGHT }}>{timeAgo(baseTicket.updatedAt)}</Typography>
             </InfoRow>
 
             <Divider sx={{ borderColor: BORDER, my: 1.5 }} />

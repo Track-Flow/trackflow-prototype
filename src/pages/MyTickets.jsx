@@ -1,20 +1,19 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Card, Typography, Button, TextField, InputAdornment, useTheme, useMediaQuery } from '@mui/material';
-import { tfTickets, getStatus, timeAgo } from '../data/mockData';
+import { getStatus, timeAgo } from '../data/mockData';
+import { useTickets } from '../context/TicketContext';
 
 const ACCENT = '#5a8dc4';
 const PAPER  = '#111d2e';
 const BORDER = 'rgba(148,163,184,0.10)';
 
-const MY_TICKETS = tfTickets.filter(t => t.requesterId === 9);
+const MY_USER_ID = 9;
 
 const CAT_COLORS = {
   'IT Support': '#5a8dc4', 'Facilities': '#c49a4a',
   'Administration': '#7a6fa8', 'Library Services': '#5a8f72', 'Other': '#7a6fa8',
 };
-
-// ─── Desktop table header ─────────────────────────────────────────────────────
 
 function TableHeader() {
   return (
@@ -33,8 +32,6 @@ function TableHeader() {
     </Box>
   );
 }
-
-// ─── Desktop table row ────────────────────────────────────────────────────────
 
 function TableRow({ ticket, onClick }) {
   const s        = getStatus(ticket.status);
@@ -61,8 +58,6 @@ function TableRow({ ticket, onClick }) {
     </Box>
   );
 }
-
-// ─── Mobile card ──────────────────────────────────────────────────────────────
 
 function MobileCard({ ticket, onClick }) {
   const s        = getStatus(ticket.status);
@@ -92,27 +87,36 @@ function MobileCard({ ticket, onClick }) {
   );
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
-
 export default function MyTickets({ extraTickets = [] }) {
   const navigate  = useNavigate();
   const theme     = useTheme();
   const isMobile  = useMediaQuery(theme.breakpoints.down('md'));
+  const { tickets } = useTickets();
+
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
 
-  const ALL = [...extraTickets.filter(t => t.requesterId === 9), ...MY_TICKETS];
+  const ALL = [
+    ...extraTickets.filter(t => t.requesterId === MY_USER_ID),
+    ...tickets.filter(t => t.requesterId === MY_USER_ID),
+  ];
 
   const displayed = ALL.filter(t => {
-    const matchFilter = filter === 'active' ? !['resolved','closed'].includes(t.status) : filter === 'closed' ? ['resolved','closed'].includes(t.status) : true;
-    const matchSearch = !search || t.title.toLowerCase().includes(search.toLowerCase()) || t.id.toLowerCase().includes(search.toLowerCase());
+    const matchFilter = filter === 'active'
+      ? !['resolved', 'closed'].includes(t.status)
+      : filter === 'closed'
+      ? ['resolved', 'closed'].includes(t.status)
+      : true;
+    const matchSearch = !search
+      || t.title.toLowerCase().includes(search.toLowerCase())
+      || t.id.toLowerCase().includes(search.toLowerCase());
     return matchFilter && matchSearch;
   });
 
   const FILTERS = [
     { key: 'all',    label: `All (${ALL.length})` },
-    { key: 'active', label: `Active (${ALL.filter(t => !['resolved','closed'].includes(t.status)).length})` },
-    { key: 'closed', label: `Resolved (${ALL.filter(t => ['resolved','closed'].includes(t.status)).length})` },
+    { key: 'active', label: `Active (${ALL.filter(t => !['resolved', 'closed'].includes(t.status)).length})` },
+    { key: 'closed', label: `Resolved (${ALL.filter(t => ['resolved', 'closed'].includes(t.status)).length})` },
   ];
 
   return (
@@ -126,7 +130,6 @@ export default function MyTickets({ extraTickets = [] }) {
         </Typography>
       </Box>
 
-      {/* Filter + search */}
       <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
           {FILTERS.map(f => (

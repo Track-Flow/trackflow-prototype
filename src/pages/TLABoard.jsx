@@ -5,7 +5,8 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Alert, Tooltip,
 } from '@mui/material';
-import { tfBoardCards, getUser } from '../data/mockData';
+import { getUser } from '../data/mockData';
+import { useTickets } from '../context/TicketContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const ACCENT      = '#5a8dc4';
@@ -28,13 +29,13 @@ const DROPPABLE   = ['open', 'in_progress', 'pending', 'resolved'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function cardStatus(card) {
-  const assignees   = card.assignees ?? [];
-  const isOwned     = assignees.includes(MY_TLA_ID);
+  const assignees    = card.assignees ?? [];
+  const isOwned      = assignees.includes(MY_TLA_ID);
   const isUnassigned = assignees.length === 0;
   const isOtherOwned = !isOwned && !isUnassigned;
-  const isResolved  = card.column === 'resolved';
-  const isClosed    = card.column === 'closed';
-  const draggable   = isOwned && !isResolved && !isClosed;
+  const isResolved   = card.column === 'resolved';
+  const isClosed     = card.column === 'closed';
+  const draggable    = isOwned && !isResolved && !isClosed;
   return { isOwned, isUnassigned, isOtherOwned, isResolved, isClosed, draggable };
 }
 
@@ -126,7 +127,6 @@ function TicketCard({ card, isDragging, onDragStart, onTouchStart, onClaim, coun
   const assignee  = card.assignees?.[0] ? getUser(card.assignees[0]) : null;
   const deptColor = DEPT_COLORS[card.dept] ?? '#94a3b8';
 
-  // Which lock to show
   const lockType = isClosed ? 'closed' : isUnassigned ? 'unassigned' : isOtherOwned ? 'other' : null;
 
   return (
@@ -163,13 +163,10 @@ function TicketCard({ card, isDragging, onDragStart, onTouchStart, onClaim, coun
         '&:active': { cursor: draggable ? 'grabbing' : 'default' },
       }}
     >
-      {/* Left accent bar */}
-      <Box sx={{
-        position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, borderRadius: '2px 0 0 2px',
+      <Box sx={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, borderRadius: '2px 0 0 2px',
         bgcolor: isClosed ? '#475569' : isResolved ? '#5a8f72' : isOwned ? ACCENT : isUnassigned ? '#c49a4a' : '#475569',
       }} />
 
-      {/* Top row: ID + badges */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1, pl: 0.5 }}>
         <Typography sx={{ fontFamily: 'monospace', fontSize: 10.5, color: '#5b8ec2', fontWeight: 600 }}>
           #{card.id.replace('TF-', '')}
@@ -183,7 +180,6 @@ function TicketCard({ card, isDragging, onDragStart, onTouchStart, onClaim, coun
         </Box>
       </Box>
 
-      {/* Title */}
       <Typography
         onClick={() => navigate(`/tickets/${card.id}`)}
         sx={{
@@ -195,7 +191,6 @@ function TicketCard({ card, isDragging, onDragStart, onTouchStart, onClaim, coun
         {card.title}
       </Typography>
 
-      {/* Dept chip */}
       <Box sx={{ pl: 0.5, mb: 1.25 }}>
         <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 0.75, py: 0.2, borderRadius: 0.75, fontSize: 10, fontWeight: 600, bgcolor: `${deptColor}12`, color: deptColor, border: `1px solid ${deptColor}22` }}>
           <span className="material-symbols-outlined" style={{ fontSize: 10 }}>category</span>
@@ -203,7 +198,6 @@ function TicketCard({ card, isDragging, onDragStart, onTouchStart, onClaim, coun
         </Box>
       </Box>
 
-      {/* Footer: assignee OR claim button */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pl: 0.5 }}>
         {assignee ? (
           <Tooltip title={assignee.name} arrow>
@@ -223,8 +217,7 @@ function TicketCard({ card, isDragging, onDragStart, onTouchStart, onClaim, coun
             startIcon={<span className="material-symbols-outlined" style={{ fontSize: 12 }}>person_add</span>}
             sx={{
               fontSize: 10.5, py: 0.3, px: 1, minWidth: 0, lineHeight: 1.4,
-              color: '#c49a4a',
-              bgcolor: 'rgba(196,154,74,0.12)',
+              color: '#c49a4a', bgcolor: 'rgba(196,154,74,0.12)',
               border: '1px solid rgba(196,154,74,0.4)',
               '&:hover': { bgcolor: 'rgba(196,154,74,0.22)', borderColor: '#c49a4a' },
             }}
@@ -250,19 +243,13 @@ function KanbanColumn({ col, cards, draggingId, onDragStart, onTouchStart, onDro
       onDragLeave={() => setIsOver(false)}
       onDrop={e => { setIsOver(false); onDrop(e, col.key); }}
       sx={{
-        flex: '1 1 0',
-        minWidth: { xs: 260, sm: 220 },
-        maxWidth: { xs: '82vw', sm: 320 },
-        display: 'flex', flexDirection: 'column',
-        borderRadius: 2,
+        flex: '1 1 0', minWidth: { xs: 260, sm: 220 }, maxWidth: { xs: '82vw', sm: 320 },
+        display: 'flex', flexDirection: 'column', borderRadius: 2,
         border: `1px solid ${isOver ? col.color + '66' : BORDER}`,
         bgcolor: isOver ? `${col.color}08` : '#080f1e',
-        transition: 'all .15s',
-        overflow: 'hidden',
-        flexShrink: 0,
+        transition: 'all .15s', overflow: 'hidden', flexShrink: 0,
       }}
     >
-      {/* Header */}
       <Box sx={{ p: 1.75, borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 1, borderTop: `3px solid ${col.color}` }}>
         <span className="material-symbols-outlined" style={{ fontSize: 16, color: col.color }}>{col.icon}</span>
         <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: TEXT_BRIGHT, flex: 1 }}>{col.label}</Typography>
@@ -271,7 +258,6 @@ function KanbanColumn({ col, cards, draggingId, onDragStart, onTouchStart, onDro
         </Box>
       </Box>
 
-      {/* Cards list */}
       <Box sx={{ p: 1.25, flex: 1, overflowY: 'auto', minHeight: 80,
         '&::-webkit-scrollbar': { width: 4 },
         '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(143,162,192,0.2)', borderRadius: 2 },
@@ -319,31 +305,31 @@ function createGhost(title) {
 // ─── Main Board ───────────────────────────────────────────────────────────────
 export default function TLABoard({ extraTickets = [] }) {
   const navigate = useNavigate();
+  const { cards, setCards, moveCard, claimCard } = useTickets();
 
-  // Deep-copy tfBoardCards so mutations never touch the module constant
-  const initialCards = [
-    ...extraTickets.filter(t => t.dept === 'it').map(t => ({
+  // Prepend any extraTickets that aren't already in context cards
+  const extraCards = extraTickets
+    .filter(t => t.dept === 'it' && !cards.find(c => c.id === t.id))
+    .map(t => ({
       id: t.id, column: t.status === 'unrouted' ? 'open' : t.status,
       title: t.title, assignees: [], dept: t.dept, due: '—',
-    })),
-    ...tfBoardCards.map(c => ({ ...c, assignees: [...(c.assignees ?? [])] })),
-  ];
+    }));
 
-  const [cards,         setCards]         = useState(initialCards);
+  const allCards = [...extraCards, ...cards];
+
   const [draggingId,    setDraggingId]    = useState(null);
   const [resolveDialog, setResolveDialog] = useState({ open: false, card: null });
   const [countdowns,    setCountdowns]    = useState({});
   const [error,         setError]         = useState('');
 
-  // refs for drag — always hold latest cards so closures don't go stale
-  const cardsRef    = useRef(cards);
+  const cardsRef    = useRef(allCards);
   const dragCard    = useRef(null);
   const timersRef   = useRef({});
   const touchCard   = useRef(null);
   const ghostEl     = useRef(null);
   const touchColRef = useRef(null);
 
-  useEffect(() => { cardsRef.current = cards; }, [cards]);
+  useEffect(() => { cardsRef.current = allCards; }, [allCards]);
 
   // ── Auto-close timer ───────────────────────────────────────────────────────
   function startCloseTimer(cardId) {
@@ -356,7 +342,8 @@ export default function TLABoard({ extraTickets = [] }) {
         clearInterval(timersRef.current[cardId]);
         delete timersRef.current[cardId];
         setCountdowns(p => { const n = { ...p }; delete n[cardId]; return n; });
-        setCards(p => p.map(c => c.id === cardId ? { ...c, column: 'closed' } : c));
+        // Move to closed in context
+        moveCard(cardId, 'closed');
       } else {
         setCountdowns(p => ({ ...p, [cardId]: rem }));
       }
@@ -372,12 +359,10 @@ export default function TLABoard({ extraTickets = [] }) {
 
   // ── Claim ──────────────────────────────────────────────────────────────────
   function handleClaim(cardId) {
-    setCards(prev => prev.map(c =>
-      c.id === cardId ? { ...c, assignees: [MY_TLA_ID] } : c
-    ));
+    claimCard(cardId, MY_TLA_ID);
   }
 
-  // ── Move logic — reads from cardsRef to avoid stale closures ──────────────
+  // ── Move logic ────────────────────────────────────────────────────────────
   const performMove = useCallback((cardId, targetCol) => {
     const liveCard = cardsRef.current.find(c => c.id === cardId);
     if (!liveCard) return;
@@ -401,8 +386,8 @@ export default function TLABoard({ extraTickets = [] }) {
       return;
     }
 
-    setCards(prev => prev.map(c => c.id === cardId ? { ...c, column: targetCol } : c));
-  }, []);
+    moveCard(cardId, targetCol);
+  }, [moveCard]);
 
   // ── Mouse drag ─────────────────────────────────────────────────────────────
   function handleDragStart(e, card) {
@@ -482,16 +467,15 @@ export default function TLABoard({ extraTickets = [] }) {
   function handleResolveConfirm() {
     const { card } = resolveDialog;
     setResolveDialog({ open: false, card: null });
-    setCards(prev => prev.map(c => c.id === card.id ? { ...c, column: 'resolved' } : c));
+    moveCard(card.id, 'resolved');
     setTimeout(() => startCloseTimer(card.id), 50);
   }
 
-  const ticketsByCol = col => cards.filter(c => c.column === col);
+  const ticketsByCol = col => allCards.filter(c => c.column === col);
 
   return (
     <Box onDragEnd={handleDragEnd} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 
-      {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2.5, flexShrink: 0, flexWrap: 'wrap', gap: 1.5 }}>
         <Box>
           <Typography sx={{ fontSize: 11, color: '#5b6d8a', fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', mb: 0.25 }}>
@@ -517,7 +501,6 @@ export default function TLABoard({ extraTickets = [] }) {
         </Box>
       </Box>
 
-      {/* Stats strip */}
       <Box sx={{ display: 'flex', gap: 1, mb: 2.5, flexShrink: 0, flexWrap: 'wrap' }}>
         {COLUMNS.map(col => (
           <Box key={col.key} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1.25, py: 0.6, borderRadius: 1.5, bgcolor: '#080f1e', border: `1px solid ${BORDER}` }}>
@@ -532,7 +515,6 @@ export default function TLABoard({ extraTickets = [] }) {
         <Alert severity="warning" sx={{ mb: 2, flexShrink: 0 }} onClose={() => setError('')}>{error}</Alert>
       )}
 
-      {/* Board */}
       <Box sx={{ display: 'flex', gap: 1.5, flex: 1, overflowX: 'auto', overflowY: 'hidden', pb: 1,
         '&::-webkit-scrollbar': { height: 6 },
         '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(143,162,192,0.2)', borderRadius: 3 },

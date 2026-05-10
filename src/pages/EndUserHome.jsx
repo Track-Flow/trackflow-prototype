@@ -1,16 +1,14 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Button, Card, Chip } from '@mui/material';
-import { tfTickets, getStatus, timeAgo } from '../data/mockData';
+import { getStatus, timeAgo } from '../data/mockData';
+import { useTickets } from '../context/TicketContext';
 
-const ACCENT = '#5a8dc4';
-const TEXT_DIM = '#94a3b8';
+const ACCENT     = '#5a8dc4';
+const TEXT_DIM   = '#94a3b8';
 const TEXT_BRIGHT = '#e3e8f0';
-const BORDER = 'rgba(148,163,184,0.10)';
+const BORDER     = 'rgba(148,163,184,0.10)';
 
-// Only show tickets belonging to Thando (userId 9)
-const MY_TICKETS = tfTickets.filter(t => t.requesterId === 9);
-const ACTIVE     = MY_TICKETS.filter(t => !['resolved', 'closed'].includes(t.status));
+const MY_USER_ID = 9;
 
 function StatusBadge({ status }) {
   const s = getStatus(status);
@@ -65,7 +63,7 @@ function TicketRow({ ticket, onClick }) {
         </Box>
         <Typography
           className="ticket-title"
-          sx={{ fontSize: 13.5, fontWeight: 600, color: '#e3e8f0', mb: 0.3, transition: 'color 0.15s' }}
+          sx={{ fontSize: 13.5, fontWeight: 600, color: TEXT_BRIGHT, mb: 0.3, transition: 'color 0.15s' }}
           noWrap
         >
           {ticket.title}
@@ -83,12 +81,16 @@ function TicketRow({ ticket, onClick }) {
 
 export default function EndUserHome({ extraTickets = [] }) {
   const navigate = useNavigate();
-  const allMyTickets = [...extraTickets.filter(t => t.requesterId === 9), ...MY_TICKETS];
+  const { tickets } = useTickets();
+
+  const allMyTickets = [
+    ...extraTickets.filter(t => t.requesterId === MY_USER_ID),
+    ...tickets.filter(t => t.requesterId === MY_USER_ID),
+  ];
   const activeTickets = allMyTickets.filter(t => !['resolved', 'closed'].includes(t.status));
 
   return (
     <Box>
-      {/* Welcome header */}
       <Box sx={{ mb: 3 }}>
         <Typography sx={{
           fontSize: 11, color: ACCENT, fontWeight: 700,
@@ -96,14 +98,13 @@ export default function EndUserHome({ extraTickets = [] }) {
         }}>
           Welcome back, Thando
         </Typography>
-        <Typography variant="h4" sx={{ fontSize: { xs: '1.4rem', md: '2.125rem' }, color: '#e3e8f0' }}>
+        <Typography variant="h4" sx={{ fontSize: { xs: '1.4rem', md: '2.125rem' }, color: TEXT_BRIGHT }}>
           How can we help you today?
         </Typography>
       </Box>
 
       <Box sx={{ display: 'flex', gap: { xs: 2, md: 3 }, flexWrap: 'wrap' }}>
 
-        {/* Quick actions card */}
         <Card sx={{ flex: '1 1 280px', p: 3 }}>
           <Typography sx={{
             fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
@@ -111,13 +112,12 @@ export default function EndUserHome({ extraTickets = [] }) {
           }}>
             Quick Actions
           </Typography>
-          <Typography variant="h6" sx={{ color: '#e3e8f0', mb: 2.5 }}>
+          <Typography variant="h6" sx={{ color: TEXT_BRIGHT, mb: 2.5 }}>
             Need something?
           </Typography>
 
           <Button
-            fullWidth
-            variant="contained"
+            fullWidth variant="contained"
             onClick={() => navigate('/submit')}
             startIcon={<span className="material-symbols-outlined" style={{ fontSize: 18 }}>add_circle</span>}
             sx={{ mb: 1.5, py: 1.25, fontSize: 14, fontWeight: 700 }}
@@ -126,31 +126,21 @@ export default function EndUserHome({ extraTickets = [] }) {
           </Button>
 
           <Button
-            fullWidth
-            variant="outlined"
+            fullWidth variant="outlined"
             onClick={() => navigate('/home/tickets')}
             startIcon={<span className="material-symbols-outlined" style={{ fontSize: 16 }}>history</span>}
-            sx={{
-              py: 1.1, fontSize: 13, color: TEXT_DIM,
-              borderColor: BORDER,
-              '&:hover': { borderColor: ACCENT, color: ACCENT },
-            }}
+            sx={{ py: 1.1, fontSize: 13, color: TEXT_DIM, borderColor: BORDER, '&:hover': { borderColor: ACCENT, color: ACCENT } }}
           >
             View ticket history ({allMyTickets.length})
           </Button>
 
-          {/* Tip */}
-          <Box sx={{
-            mt: 2.5, p: 1.75, borderRadius: 2,
-            background: 'rgba(90,141,196,0.06)',
-            border: '1px solid rgba(37,99,235,0.12)',
-          }}>
+          <Box sx={{ mt: 2.5, p: 1.75, borderRadius: 2, background: 'rgba(90,141,196,0.06)', border: '1px solid rgba(37,99,235,0.12)' }}>
             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
               <Typography sx={{ fontSize: 14 }}>💡</Typography>
               <Box>
                 <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ACCENT, mb: 0.25 }}>Tip</Typography>
                 <Typography sx={{ fontSize: 12, color: TEXT_DIM, lineHeight: 1.5 }}>
-                  Choose <strong style={{ color: '#e3e8f0' }}>Other</strong> if no category fits —
+                  Choose <strong style={{ color: TEXT_BRIGHT }}>Other</strong> if no category fits —
                   Help-desk admin will route it for you.
                 </Typography>
               </Box>
@@ -158,17 +148,13 @@ export default function EndUserHome({ extraTickets = [] }) {
           </Box>
         </Card>
 
-        {/* My tickets card */}
         <Card sx={{ flex: '1 1 280px', p: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
             <Box>
-              <Typography sx={{
-                fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
-                textTransform: 'uppercase', color: ACCENT, mb: 0.25,
-              }}>
+              <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: ACCENT, mb: 0.25 }}>
                 {activeTickets.length} Active
               </Typography>
-              <Typography variant="h6" sx={{ color: '#e3e8f0' }}>My tickets</Typography>
+              <Typography variant="h6" sx={{ color: TEXT_BRIGHT }}>My tickets</Typography>
             </Box>
             <Button
               size="small"
