@@ -1,97 +1,96 @@
-import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
-import tfTheme from './theme/tfTheme';
-import Shell, { getActiveRole, setActiveRole, ROLE_HOME } from './components/Shell';
-
-import EndUserHome     from './pages/EndUserHome';
-import SubmitTicket    from './pages/SubmitTicket';
-import MyTickets       from './pages/MyTickets';
-import TicketDetail    from './pages/TicketDetail';
-import TLAHome         from './pages/TLAHome';
-import TLABoard        from './pages/TLABoard';
-import ManagerHome        from './pages/ManagerHome';
-import ManagerReports     from './pages/ManagerReports';
-import ManagerAllTickets  from './pages/ManagerAlltickets';
-import HelpdeskHome    from './pages/HelpdeskHome';
+import tfTheme      from './theme/tfTheme';
+import Shell        from './components/Shell';
+import LoginPage    from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import TLAHome      from './pages/TLAHome';
+import ManagerHome  from './pages/ManagerHome';
+import EndUserHome  from './pages/EndUserHome';
+import HelpdeskHome from './pages/HelpdeskHome';
 import AccessManagement from './pages/AccessManagement';
+import Stub         from './pages/Stub';
+import SubmitTicket  from './pages/SubmitTicket';
+import TicketDetail  from './pages/TicketDetail';
+import MyTickets     from './pages/MyTickets';
+import TLABoard from './pages/TLABoard';
+import ManagerReports from './pages/ManagerReports';
+import ManagerAllTickets from './pages/ManagerAlltickets';
+// ─── Auth helpers ─────────────────────────────────────────────────────────────
 
-// ─── Stub for unbuilt pages ───────────────────────────────────────────────────
-
-import { Box, Typography } from '@mui/material';
-function Stub({ title, icon = 'construction' }) {
-  return (
-    <Box sx={{ textAlign: 'center', pt: 8 }}>
-      <span className="material-symbols-outlined" style={{ fontSize: 48, color: '#475569', display: 'block', marginBottom: 16 }}>
-        {icon}
-      </span>
-      <Typography variant="h5" sx={{ color: '#e3e8f0', mb: 1 }}>{title}</Typography>
-      <Typography sx={{ color: '#94a3b8', fontSize: 13 }}>This page is not included in the prototype.</Typography>
-    </Box>
-  );
+function getUser() {
+  try { return JSON.parse(localStorage.getItem('tf_user')); }
+  catch { return null; }
 }
 
-// ─── App ─────────────────────────────────────────────────────────────────────
+const ROLE_HOME = {
+  tla:         '/tla',
+  mss_manager: '/manager',
+  end_user:    '/home',
+  admin:       '/helpdesk',
+};
+
+// ─── Guards ───────────────────────────────────────────────────────────────────
+
+function PrivateRoute({ children, roles }) {
+  const token = localStorage.getItem('tf_token');
+  const user  = getUser();
+  if (!token || !user)                      return <Navigate to="/login"  replace />;
+  if (roles && !roles.includes(user.role))  return <Navigate to="/"      replace />;
+  return <Shell>{children}</Shell>;
+}
+
+function RoleRedirect() {
+  const user = getUser();
+  if (!user) return <Navigate to="/login" replace />;
+  return <Navigate to={ROLE_HOME[user.role] ?? '/login'} replace />;
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [role, setRole]                 = useState(getActiveRole());
-  const [extraTickets, setExtraTickets] = useState([]);
-
-  function handleRoleSwitch(newRole) {
-    setActiveRole(newRole);
-    setRole(newRole);
-  }
-
-  function addTicket(ticket) {
-    setExtraTickets(prev => [ticket, ...prev]);
-  }
-
-  function wrap(children) {
-    return (
-      <Shell role={role} onRoleSwitch={handleRoleSwitch}>
-        {children}
-      </Shell>
-    );
-  }
-
   return (
     <ThemeProvider theme={tfTheme}>
       <CssBaseline />
       <BrowserRouter>
         <Routes>
-          {/* Root → role home */}
-          <Route path="/" element={<Navigate to={ROLE_HOME[role] ?? '/home'} replace />} />
+          {/* Public */}
+          <Route path="/login"    element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
 
-          {/* ── End User ── */}
-          <Route path="/home"         element={wrap(<EndUserHome extraTickets={extraTickets} />)} />
-          <Route path="/submit"       element={wrap(<SubmitTicket onSubmit={addTicket} />)} />
-          <Route path="/home/tickets" element={wrap(<MyTickets extraTickets={extraTickets} />)} />
-          <Route path="/home/inbox"   element={wrap(<Stub title="Notifications" icon="notifications" />)} />
-          <Route path="/home/profile" element={wrap(<Stub title="Profile" icon="person" />)} />
+          {/* TLA */}
+          <Route path="/tla"       element={<PrivateRoute roles={['tla']}><TLAHome /></PrivateRoute>} />
+          <Route path="/tla/board" element={<PrivateRoute roles={['tla']}><TLABoard /></PrivateRoute>} />
+          <Route path="/tla/queue" element={<PrivateRoute roles={['tla']}><Stub title="My queue" icon="confirmation_number" /></PrivateRoute>} />
+          <Route path="/tla/inbox" element={<PrivateRoute roles={['tla']}><Stub title="Inbox" icon="inbox" /></PrivateRoute>} />
 
-          {/* ── Shared ── */}
-          <Route path="/tickets/:id"  element={wrap(<TicketDetail extraTickets={extraTickets} />)} />
 
-          {/* ── TLA ── */}
-          <Route path="/tla"          element={wrap(<TLAHome extraTickets={extraTickets} />)} />
-          <Route path="/tla/board"    element={wrap(<TLABoard extraTickets={extraTickets} />)} />
-          <Route path="/tla/inbox"    element={wrap(<Stub title="Inbox" icon="inbox" />)} />
 
-          {/* ── MSS Manager ── */}
-          <Route path="/manager"         element={wrap(<ManagerHome extraTickets={extraTickets} />)} />
-          <Route path="/manager/reports" element={wrap(<ManagerReports />)} />
-                    <Route path="/manager/tickets" element={wrap(<ManagerAllTickets extraTickets={extraTickets} />)} />
+          {/* MSS Manager */}
+          <Route path="/manager"         element={<PrivateRoute roles={['mss_manager']}><ManagerHome /></PrivateRoute>} />
+          <Route path="/manager/tickets" element={<PrivateRoute roles={['mss_manager']}><ManagerAllTickets/></PrivateRoute>} />
+          <Route path="/manager/depts"   element={<PrivateRoute roles={['mss_manager']}><Stub title="Departments" icon="groups" /></PrivateRoute>} />
+          <Route path="/manager/reports" element={<PrivateRoute roles={['mss_manager']}><ManagerReports /></PrivateRoute>} />
+          <Route path="/manager/tlas"    element={<PrivateRoute roles={['mss_manager']}><Stub title="TLAs" icon="badge" /></PrivateRoute>} />
 
-          <Route path="/manager/tlas"    element={wrap(<Stub title="TLA Management" icon="badge" />)} />
+          {/* End User */}
+          <Route path="/home"         element={<PrivateRoute roles={['end_user']}><EndUserHome /></PrivateRoute>} />
+          <Route path="/submit" element={<PrivateRoute roles={['end_user']}><SubmitTicket /></PrivateRoute>} />
+          <Route path="/home/tickets" element={<PrivateRoute roles={['end_user']}><MyTickets /></PrivateRoute>} />
+          <Route path="/home/inbox"   element={<PrivateRoute roles={['end_user']}><Stub title="Notifications" icon="notifications" /></PrivateRoute>} />
+          <Route path="/tickets/:id" element={<PrivateRoute roles={['tla','mss_manager','end_user','admin']}><TicketDetail /></PrivateRoute>} />
 
-          {/* ── Help Desk ── */}
-          <Route path="/helpdesk"         element={wrap(<HelpdeskHome extraTickets={extraTickets} />)} />
-          <Route path="/helpdesk/users"   element={wrap(<AccessManagement />)} />
-          <Route path="/helpdesk/tickets" element={wrap(<Stub title="All Tickets" icon="confirmation_number" />)} />
-          <Route path="/helpdesk/audit"   element={wrap(<Stub title="Audit Log" icon="shield" />)} />
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to={ROLE_HOME[role] ?? '/home'} replace />} />
+          {/* Help Desk */}
+          <Route path="/helpdesk"         element={<PrivateRoute roles={['admin']}><HelpdeskHome /></PrivateRoute>} />
+          <Route path="/helpdesk/tickets" element={<PrivateRoute roles={['admin']}><Stub title="All tickets" icon="confirmation_number" /></PrivateRoute>} />
+          <Route path="/helpdesk/users" element={<PrivateRoute roles={['admin']}><AccessManagement /></PrivateRoute>} />
+
+          <Route path="/helpdesk/cats"    element={<PrivateRoute roles={['admin']}><Stub title="Categories" icon="category" /></PrivateRoute>} />
+          <Route path="/helpdesk/audit"   element={<PrivateRoute roles={['admin']}><Stub title="Audit log" icon="shield" /></PrivateRoute>} />
+
+          {/* Catch-all */}
+          <Route path="*" element={<RoleRedirect />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>

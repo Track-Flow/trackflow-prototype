@@ -1,17 +1,21 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Typography, Button, Card, Chip } from '@mui/material';
-import { getStatus, timeAgo } from '../data/mockData';
-import { useTickets } from '../context/TicketContext';
+import {
+  Box, Typography, Button, Card, Chip, CircularProgress, Alert,
+} from '@mui/material';
+import api from '../helpers/api';
+import { statusMeta, timeAgo, getUserTickets } from '../helpers/ticketHelpers';
 
-const ACCENT     = '#5a8dc4';
-const TEXT_DIM   = '#94a3b8';
+const ACCENT      = '#5a8dc4';
+const PAPER       = '#111d2e';
+const BORDER      = 'rgba(148,163,184,0.10)';
+const TEXT_DIM    = '#94a3b8';
+const TEXT_MUTED  = '#64748b';
 const TEXT_BRIGHT = '#e3e8f0';
-const BORDER     = 'rgba(148,163,184,0.10)';
 
-const MY_USER_ID = 9;
-
+// ─── Status badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
-  const s = getStatus(status);
+  const s = statusMeta(status);
   return (
     <Chip
       label={s.label.toUpperCase()}
@@ -26,29 +30,14 @@ function StatusBadge({ status }) {
   );
 }
 
-function CategoryDot({ category }) {
-  const colors = {
-    'IT Support': '#5a8dc4', 'Facilities': '#c49a4a',
-    'Administration': '#7a6fa8', 'Library Services': '#5a8f72', 'Other': '#7a6fa8',
-  };
-  const color = colors[category] ?? '#94a3b8';
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-      <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: color }} />
-      <Typography sx={{ fontSize: 11, color }}>{category}</Typography>
-    </Box>
-  );
-}
-
+// ─── Ticket row ───────────────────────────────────────────────────────────────
 function TicketRow({ ticket, onClick }) {
   return (
     <Box
       onClick={onClick}
       sx={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        py: 1.5, px: 0,
-        borderBottom: `1px solid ${BORDER}`,
-        cursor: 'pointer',
+        py: 1.5, borderBottom: `1px solid ${BORDER}`, cursor: 'pointer',
         '&:last-child': { borderBottom: 'none' },
         '&:hover .ticket-title': { color: ACCENT },
         transition: 'all 0.15s',
@@ -56,38 +45,50 @@ function TicketRow({ ticket, onClick }) {
     >
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
-          <Typography sx={{ fontSize: 11, fontFamily: 'monospace', color: '#0ea5e9' }}>
-            {ticket.id}
+          <Typography sx={{ fontSize: 11, fontFamily: 'monospace', color: '#5b8ec2' }}>
+            #{ticket.ticket_id}
           </Typography>
-          <CategoryDot category={ticket.category} />
+          {ticket.category_name && (
+            <Typography sx={{ fontSize: 11, color: TEXT_DIM }}>
+              {ticket.category_name}
+            </Typography>
+          )}
         </Box>
         <Typography
           className="ticket-title"
           sx={{ fontSize: 13.5, fontWeight: 600, color: TEXT_BRIGHT, mb: 0.3, transition: 'color 0.15s' }}
           noWrap
         >
-          {ticket.title}
+          {ticket.ticket_title}
         </Typography>
-        <Typography sx={{ fontSize: 11, color: TEXT_DIM }}>
-          Updated {timeAgo(ticket.updatedAt)}
+        <Typography sx={{ fontSize: 11, color: TEXT_MUTED }}>
+          Updated {timeAgo(ticket.updated_at ?? ticket.created_at)}
         </Typography>
       </Box>
       <Box sx={{ ml: 2, flexShrink: 0 }}>
-        <StatusBadge status={ticket.status} />
+        <StatusBadge status={ticket.ticket_status} />
       </Box>
     </Box>
   );
 }
 
-export default function EndUserHome({ extraTickets = [] }) {
+// ─── Main ─────────────────────────────────────────────────────────────────────
+export default function EndUserHome() {
   const navigate = useNavigate();
-  const { tickets } = useTickets();
+  const user     = JSON.parse(localStorage.getItem('tf_user') ?? 'null');
 
-  const allMyTickets = [
-    ...extraTickets.filter(t => t.requesterId === MY_USER_ID),
-    ...tickets.filter(t => t.requesterId === MY_USER_ID),
-  ];
-  const activeTickets = allMyTickets.filter(t => !['resolved', 'closed'].includes(t.status));
+  const [tickets, setTickets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState('');
+
+  useEffect(() => {
+    api.get('/api/tickets')
+      .then(res => setTickets(getUserTickets(res.data, user?.id)))
+      .catch(err => setError(err.response?.data?.error ?? 'Failed to load.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const activeTickets = tickets.filter(t => !['resolved', 'closed'].includes(t.ticket_status));
 
   return (
     <Box>
@@ -96,16 +97,19 @@ export default function EndUserHome({ extraTickets = [] }) {
           fontSize: 11, color: ACCENT, fontWeight: 700,
           letterSpacing: '0.14em', textTransform: 'uppercase', mb: 0.5,
         }}>
-          Welcome back, Thando
+          Welcome back, {user?.name?.split(' ')[0]}
         </Typography>
-        <Typography variant="h4" sx={{ fontSize: { xs: '1.4rem', md: '2.125rem' }, color: TEXT_BRIGHT }}>
+        <Typography variant="h4" sx={{ fontSize: { xs: '1.4rem', md: '2.125rem' }, color: TEXT_BRIGHT, fontFamily: '"Rubik", sans-serif' }}>
           How can we help you today?
         </Typography>
       </Box>
 
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+
       <Box sx={{ display: 'flex', gap: { xs: 2, md: 3 }, flexWrap: 'wrap' }}>
 
-        <Card sx={{ flex: '1 1 280px', p: 3 }}>
+        {/* Quick actions */}
+        <Card sx={{ flex: '1 1 280px', p: 3, bgcolor: PAPER, border: `1px solid ${BORDER}` }}>
           <Typography sx={{
             fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
             textTransform: 'uppercase', color: ACCENT, mb: 1.5,
@@ -129,12 +133,19 @@ export default function EndUserHome({ extraTickets = [] }) {
             fullWidth variant="outlined"
             onClick={() => navigate('/home/tickets')}
             startIcon={<span className="material-symbols-outlined" style={{ fontSize: 16 }}>history</span>}
-            sx={{ py: 1.1, fontSize: 13, color: TEXT_DIM, borderColor: BORDER, '&:hover': { borderColor: ACCENT, color: ACCENT } }}
+            sx={{
+              py: 1.1, fontSize: 13, color: TEXT_DIM, borderColor: BORDER,
+              '&:hover': { borderColor: ACCENT, color: ACCENT },
+            }}
           >
-            View ticket history ({allMyTickets.length})
+            View ticket history ({tickets.length})
           </Button>
 
-          <Box sx={{ mt: 2.5, p: 1.75, borderRadius: 2, background: 'rgba(90,141,196,0.06)', border: '1px solid rgba(37,99,235,0.12)' }}>
+          <Box sx={{
+            mt: 2.5, p: 1.75, borderRadius: 2,
+            background: 'rgba(90,141,196,0.06)',
+            border: '1px solid rgba(90,141,196,0.15)',
+          }}>
             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
               <Typography sx={{ fontSize: 14 }}>💡</Typography>
               <Box>
@@ -148,10 +159,14 @@ export default function EndUserHome({ extraTickets = [] }) {
           </Box>
         </Card>
 
-        <Card sx={{ flex: '1 1 280px', p: 3 }}>
+        {/* My tickets preview */}
+        <Card sx={{ flex: '1 1 280px', p: 3, bgcolor: PAPER, border: `1px solid ${BORDER}` }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
             <Box>
-              <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: ACCENT, mb: 0.25 }}>
+              <Typography sx={{
+                fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
+                textTransform: 'uppercase', color: ACCENT, mb: 0.25,
+              }}>
                 {activeTickets.length} Active
               </Typography>
               <Typography variant="h6" sx={{ color: TEXT_BRIGHT }}>My tickets</Typography>
@@ -166,22 +181,40 @@ export default function EndUserHome({ extraTickets = [] }) {
             </Button>
           </Box>
 
-          {activeTickets.length === 0 ? (
+          {loading && (
             <Box sx={{ textAlign: 'center', py: 4 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 40, color: TEXT_DIM, display: 'block', marginBottom: 8 }}>
+              <CircularProgress size={24} sx={{ color: ACCENT }} />
+            </Box>
+          )}
+
+          {!loading && tickets.length === 0 && (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 40, color: TEXT_MUTED, display: 'block', marginBottom: 8 }}>
+                inbox
+              </span>
+              <Typography sx={{ color: TEXT_DIM, fontSize: 13, mb: 1.5 }}>No tickets yet.</Typography>
+              <Button variant="contained" size="small" onClick={() => navigate('/submit')}>
+                Submit your first ticket
+              </Button>
+            </Box>
+          )}
+
+          {!loading && tickets.length > 0 && activeTickets.length === 0 && (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 40, color: '#5a8f72', display: 'block', marginBottom: 8 }}>
                 check_circle
               </span>
               <Typography sx={{ color: TEXT_DIM, fontSize: 13 }}>No active tickets — all clear!</Typography>
             </Box>
-          ) : (
-            activeTickets.slice(0, 3).map(ticket => (
-              <TicketRow
-                key={ticket.id}
-                ticket={ticket}
-                onClick={() => navigate(`/tickets/${ticket.id}`)}
-              />
-            ))
           )}
+
+          {!loading && activeTickets.slice(0, 3).map(ticket => (
+            <TicketRow
+              key={ticket.ticket_id}
+              ticket={ticket}
+              onClick={() => navigate(`/tickets/${ticket.ticket_id}`)}
+            />
+          ))}
         </Card>
       </Box>
     </Box>
