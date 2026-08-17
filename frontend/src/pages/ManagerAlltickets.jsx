@@ -142,7 +142,7 @@ export default function ManagerAllTickets() {
   const [deptFilter,   setDeptFilter]   = useState('all');
 
   useEffect(() => {
-    api.get('/api/tickets')
+    api.get('/tickets')
       .then(res => setTickets(res.data))
       .catch(err => setError(err.response?.data?.error ?? 'Failed to load tickets.'))
       .finally(() => setLoading(false));

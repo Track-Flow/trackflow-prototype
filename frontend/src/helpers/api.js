@@ -1,7 +1,7 @@
 // helpers/api.js  ← create this file
 import axios from 'axios';
 
-const api = axios.create({ baseURL: 'http://localhost:3000' });
+const api = axios.create({ baseURL: '/api' });
 
 // attach token to every request automatically
 api.interceptors.request.use(config => {

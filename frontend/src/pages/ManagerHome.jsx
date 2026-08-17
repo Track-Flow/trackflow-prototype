@@ -108,7 +108,7 @@ export default function ManagerHome() {
   const [error,   setError]   = useState('');
 
   useEffect(() => {
-    api.get('/api/tickets')
+    api.get('/tickets')
       .then(res => setTickets(res.data))
       .catch(err => setError(err.response?.data?.error ?? 'Failed to load.'))
       .finally(() => setLoading(false));

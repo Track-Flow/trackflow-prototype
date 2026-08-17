@@ -250,7 +250,7 @@ export default function TLAHome() {
 
   const fetchTickets = async () => {
     try {
-      const res = await api.get('/api/tickets');
+      const res = await api.get('/tickets');
       const filtered = res.data.filter(t =>
         user?.department_id ? t.department_id === user.department_id : true
       );
@@ -270,7 +270,7 @@ export default function TLAHome() {
 
   const handleClaim = async (id) => {
     try {
-      await api.patch(`/api/tickets/${id}`, { assignee_id: user.id });
+      await api.patch(`/tickets/${id}`, { assignee_id: user.id });
       setSnack({ open: true, message: `Ticket #${id} claimed.` });
       fetchTickets();
     } catch (err) {
@@ -280,7 +280,7 @@ export default function TLAHome() {
 
   const handleUpdateStatus = async (id, status) => {
     try {
-      await api.patch(`/api/tickets/${id}`, { ticket_status: status });
+      await api.patch(`/tickets/${id}`, { ticket_status: status });
       fetchTickets();
     } catch (err) {
       setError(err.response?.data?.error ?? 'Failed to update.');
@@ -293,7 +293,7 @@ export default function TLAHome() {
     const { ticket } = resolveDialog;
     setResolveDialog({ open: false, ticket: null });
     try {
-      await api.patch(`/api/tickets/${ticket.ticket_id}`, { ticket_status: 'resolved', resolution_notes: notes });
+      await api.patch(`/tickets/${ticket.ticket_id}`, { ticket_status: 'resolved', resolution_notes: notes });
       fetchTickets();
     } catch (err) {
       setError(err.response?.data?.error ?? 'Failed to resolve.');

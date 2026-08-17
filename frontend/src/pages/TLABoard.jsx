@@ -403,7 +403,7 @@ export default function TLABoard() {
 
   const fetchTickets = async () => {
     try {
-      const res = await api.get('/api/tickets');
+      const res = await api.get('/tickets');
       const filtered = res.data.filter(t =>
         t.department_id != null &&
         (user?.department_id ? t.department_id === user.department_id : true)
@@ -427,7 +427,7 @@ export default function TLABoard() {
         : t)
     );
     try {
-      await api.patch(`/api/tickets/${ticketId}`, { assignee_id: user?.id });
+      await api.patch(`/tickets/${ticketId}`, { assignee_id: user?.id });
       fetchTickets();
     } catch (err) {
       setTickets(prev =>
@@ -486,7 +486,7 @@ export default function TLABoard() {
     try {
       const body = { ticket_status: targetStatus };
       if (notes) body.resolution_notes = notes;
-      await api.patch(`/api/tickets/${ticket.ticket_id}`, body);
+      await api.patch(`/tickets/${ticket.ticket_id}`, body);
       fetchTickets();
     } catch {
       setTickets(prev =>
@@ -518,20 +518,7 @@ export default function TLABoard() {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-          <Box sx={{
-            display: 'inline-flex', alignItems: 'center', gap: 0.6, px: 1.25, py: 0.5, borderRadius: 999,
-            border: '1px solid rgba(90,143,114,0.3)', bgcolor: 'rgba(90,143,114,0.07)',
-          }}>
-            <Box sx={{
-              width: 6, height: 6, borderRadius: '50%', bgcolor: '#5a8f72',
-              animation: 'tfpulse 2s ease-in-out infinite',
-              '@keyframes tfpulse': {
-                '0%,100%': { boxShadow: '0 0 0 0 rgba(90,143,114,0.4)' },
-                '50%':     { boxShadow: '0 0 0 5px rgba(90,143,114,0)' },
-              },
-            }} />
-            <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#5a8f72' }}>LIVE</Typography>
-          </Box>
+        
           <Button variant="outlined" onClick={() => navigate('/tla')}
             startIcon={<span className="material-symbols-outlined" style={{ fontSize: 16 }}>dashboard</span>}
             sx={{ color: TEXT_DIM, borderColor: BORDER, fontSize: 12 }}>

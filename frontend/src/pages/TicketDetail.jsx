@@ -151,7 +151,7 @@ export default function TicketDetail() {
 
   const fetchTicket = () => {
     setLoading(true);
-    api.get(`/api/tickets/${id}`)
+    api.get(`/tickets/${id}`)
       .then(res => setTicket(res.data))
       .catch(err => setError(err.response?.data?.error ?? 'Failed to load ticket.'))
       .finally(() => setLoading(false));
@@ -167,7 +167,7 @@ export default function TicketDetail() {
     const mode = noteDialog.mode;
     setNoteDialog({ open: false, mode: null });
     try {
-      await api.patch(`/api/tickets/${id}`, { ticket_status: mode, resolution_notes: notes });
+      await api.patch(`/tickets/${id}`, { ticket_status: mode, resolution_notes: notes });
       fetchTicket();
     } catch (err) {
       setError(err.response?.data?.error ?? 'Failed to update ticket.');
@@ -176,7 +176,7 @@ export default function TicketDetail() {
 
   const patchStatus = async (newStatus) => {
     try {
-      await api.patch(`/api/tickets/${id}`, { ticket_status: newStatus });
+      await api.patch(`/tickets/${id}`, { ticket_status: newStatus });
       fetchTicket();
     } catch (err) {
       setError(err.response?.data?.error ?? 'Failed to update ticket.');

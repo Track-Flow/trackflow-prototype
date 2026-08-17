@@ -271,7 +271,7 @@ export default function SubmitTicket() {
   const [success,    setSuccess]    = useState(false);
 
   useEffect(() => {
-    api.get('/api/categories')
+    api.get('/categories')
       .then(res => setCategories(res.data))
       .catch(() => setError('Failed to load categories.'))
       .finally(() => setCatLoading(false));
@@ -295,7 +295,7 @@ export default function SubmitTicket() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.post('/api/tickets', {
+      const res = await api.post('/tickets', {
         ticket_title:       form.ticket_title.trim(),
         ticket_description: form.ticket_description.trim(),
         category_id:        selected.category_id,

@@ -141,7 +141,7 @@ export default function MyTickets() {
   const [filter,  setFilter]  = useState('all');
 
   useEffect(() => {
-    api.get('/api/tickets')
+    api.get('/tickets')
       .then(res => setTickets(getUserTickets(res.data, user?.id)))
       .catch(err => setError(err.response?.data?.error ?? 'Failed to load.'))
       .finally(() => setLoading(false));
