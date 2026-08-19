@@ -31,6 +31,7 @@ const ticketRoutes = require('./routes/ticket');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const categoriesRoutes = require('./routes/categories');
+const userRoutes = require('./routes/user');
 
 const { authenticateToken } = require('./middleware/auth');
 
@@ -38,6 +39,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tickets', authenticateToken, ticketRoutes);
 app.use('/api/admin', authenticateToken, adminRoutes);
 app.use('/api/categories', authenticateToken, categoriesRoutes);
+app.use('/api/users', authenticateToken, userRoutes);
 
 // Delete the second app.use(cors(...)) block entirely.
 

@@ -25,7 +25,6 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 //get ticket by id
-//get ticket by id
 router.get("/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
@@ -51,6 +50,41 @@ router.get("/:id", authenticateToken, async (req, res) => {
     res.json(rows[0]);
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// get ticket lifecycle / status history
+router.get("/:id/history", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [ticketRows] = await pool.query(
+      "SELECT ticket_id FROM ticket WHERE ticket_id = ?",
+      [id]
+    );
+    if (ticketRows.length === 0) {
+      return res.status(404).json({ error: "Ticket not found" });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT
+        l.log_id,
+        l.ticket_id,
+        l.old_status,
+        l.new_status,
+        l.changed_by,
+        u.user_name AS changed_by_name,
+        l.note,
+        l.changed_at
+       FROM ticket_status_log l
+       LEFT JOIN user u ON l.changed_by = u.user_id
+       WHERE l.ticket_id = ?
+       ORDER BY l.changed_at ASC, l.log_id ASC`,
+      [id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("Fetch history error:", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
@@ -111,6 +145,42 @@ router.post("/", authenticateToken, async (req, res) => {
   }
 });
 
+
+router.post("/check-duplicate", authenticateToken, async (req, res) => {
+  const { ticket_title } = req.body;
+  const user_id = req.user.id;
+
+  if (!ticket_title) {
+    return res.status(400).json({ error: "ticket_title is required." });
+  }
+
+  let conn;
+  try {
+    conn = await pool.getConnection();
+
+    const [dupes] = await conn.query(
+      `SELECT ticket_id, ticket_title, ticket_status, ticket_created_at
+       FROM ticket
+       WHERE user_id = ?
+         AND ticket_status NOT IN ('resolved', 'closed')
+         AND (
+           ticket_title = ?
+           OR ticket_title LIKE CONCAT('%', ?, '%')
+         )
+       ORDER BY ticket_created_at DESC
+       LIMIT 5`,
+      [user_id, ticket_title, ticket_title],
+    );
+
+    return res.status(200).json({ duplicates: dupes });
+  } catch (err) {
+    console.error("Duplicate check error:", err);
+    return res.status(500).json({ error: "Internal server error." });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
 // Patch /api/tickets/:id
 router.patch("/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
@@ -130,6 +200,7 @@ router.patch("/:id", authenticateToken, async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection();
+    await conn.beginTransaction();
 
     // --- Check ticket exists ---
     const [tickets] = await conn.query(
@@ -137,6 +208,7 @@ router.patch("/:id", authenticateToken, async (req, res) => {
       [id]
     );
     if (tickets.length === 0) {
+      await conn.rollback();
       return res.status(404).json({ error: "Ticket not found." });
     }
 
@@ -146,11 +218,27 @@ router.patch("/:id", authenticateToken, async (req, res) => {
     // --- Authorisation ---
     if (requesting_user_role === "end_user") {
       if (ticket.user_id !== requesting_user_id) {
+        await conn.rollback();
         return res.status(403).json({ error: "Not authorised to update this ticket." });
       }
       if (ticket.ticket_status !== "open") {
+        await conn.rollback();
         return res.status(403).json({ error: "You can only edit tickets that are still open." });
       }
+    }
+
+    // --- Determine if this request is a claim (assigning a TLA) ---
+    const isClaim = requesting_user_role !== "end_user" && assignee_id !== undefined;
+
+    if (isClaim && ["resolved", "closed"].includes(ticket.ticket_status)) {
+      await conn.rollback();
+      return res.status(409).json({ error: "Cannot claim a resolved or closed ticket." });
+    }
+
+    // Auto-progress: claiming with no explicit status moves the ticket to in_progress
+    let effectiveStatus = ticket_status;
+    if (isClaim && ticket_status === undefined) {
+      effectiveStatus = "in_progress";
     }
 
     // --- Build dynamic update ---
@@ -167,9 +255,9 @@ router.patch("/:id", authenticateToken, async (req, res) => {
       values.push(ticket_description);
     }
 
-    if (ticket_status === 'resolved') {
+    if (effectiveStatus === 'resolved') {
       fields.push('resolved_at = NOW()');
-    } else if (ticket_status !== undefined && ticket_status !== 'resolved') {
+    } else if (effectiveStatus !== undefined && effectiveStatus !== 'resolved') {
       fields.push('resolved_at = NULL'); // reopened — reset it
     }
 
@@ -181,13 +269,14 @@ router.patch("/:id", authenticateToken, async (req, res) => {
     // Only tla / mss_manager / admin can update these fields
     if (requesting_user_role !== "end_user") {
 
-      if (ticket_status !== undefined) {
+      if (effectiveStatus !== undefined) {
         const validStatuses = ["open", "in_progress", "struggling", "resolved", "closed"];
-        if (!validStatuses.includes(ticket_status)) {
+        if (!validStatuses.includes(effectiveStatus)) {
+          await conn.rollback();
           return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
         }
         fields.push("ticket_status = ?");
-        values.push(ticket_status);
+        values.push(effectiveStatus);
       }
 
       if (ticket_escalated !== undefined) {
@@ -201,6 +290,7 @@ router.patch("/:id", authenticateToken, async (req, res) => {
           [assignee_id, "tla"]
         );
         if (assignee.length === 0) {
+          await conn.rollback();
           return res.status(404).json({ error: "Assigned TLA not found." });
         }
         fields.push("assigned_user_id = ?");
@@ -213,6 +303,7 @@ router.patch("/:id", authenticateToken, async (req, res) => {
           [category_id]
         );
         if (categories.length === 0) {
+          await conn.rollback();
           return res.status(404).json({ error: "Category not found." });
         }
         const { department_id, category_name } = categories[0];
@@ -225,6 +316,7 @@ router.patch("/:id", authenticateToken, async (req, res) => {
     }
 
     if (fields.length === 0) {
+      await conn.rollback();
       return res.status(400).json({ error: "No valid fields provided for update." });
     }
 
@@ -237,11 +329,38 @@ router.patch("/:id", authenticateToken, async (req, res) => {
     );
 
     // --- Log status change ---
-    if (ticket_status !== undefined && ticket_status !== oldStatus) {
+    // Always write a note: explicit resolution_notes wins, otherwise generate
+    // a sensible default so ticket_status_log.note is never blank for a real
+    // status transition. This is what powers the lifecycle popup.
+    if (effectiveStatus !== undefined && effectiveStatus !== oldStatus) {
+      let note = resolution_notes ?? null;
+
+      if (!note) {
+        if (isClaim) {
+          note = `Claimed by ${requesting_user_id}`;
+        } else {
+          const AUTO_NOTES = {
+            "open->in_progress":       `Started by ${requesting_user_id}`,
+            "in_progress->open":       `Unclaimed / reopened by ${requesting_user_id}`,
+            "in_progress->struggling": `Flagged as struggling by ${requesting_user_id}`,
+            "struggling->in_progress": `Resumed by ${requesting_user_id}`,
+            "struggling->open":        `Reopened from struggling by ${requesting_user_id}`,
+            "resolved->open":          `Reopened by ${requesting_user_id}`,
+            "resolved->in_progress":   `Reopened and resumed by ${requesting_user_id}`,
+            "open->resolved":          `Resolved by ${requesting_user_id}`,
+            "in_progress->resolved":   `Resolved by ${requesting_user_id}`,
+            "struggling->resolved":    `Resolved by ${requesting_user_id}`,
+            "resolved->closed":        `Auto-closed 24h after resolution`,
+          };
+          note = AUTO_NOTES[`${oldStatus}->${effectiveStatus}`]
+            ?? `Status changed from ${oldStatus} to ${effectiveStatus} by ${requesting_user_id}`;
+        }
+      }
+
       await conn.query(
         `INSERT INTO ticket_status_log (ticket_id, old_status, new_status, changed_by, note)
          VALUES (?, ?, ?, ?, ?)`,
-        [id, oldStatus, ticket_status, requesting_user_id, resolution_notes ?? null]
+        [id, oldStatus, effectiveStatus, requesting_user_id, note]
       );
     }
 
@@ -249,14 +368,20 @@ router.patch("/:id", authenticateToken, async (req, res) => {
       "SELECT * FROM ticket WHERE ticket_id = ?",
       [id]
     );
+
+    await conn.commit();
     return res.status(200).json({ message: "Ticket updated successfully.", ticket: updated[0] });
 
   } catch (err) {
+    if (conn) {
+      try { await conn.rollback(); } catch (rollbackErr) {
+        console.error("Rollback failed:", rollbackErr);
+      }
+    }
     console.error("Update ticket error:", err);
     return res.status(500).json({ error: "Internal server error." });
   } finally {
     if (conn) conn.release();
   }
 });
-
 module.exports = router;

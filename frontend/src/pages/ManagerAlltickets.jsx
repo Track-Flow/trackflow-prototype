@@ -25,7 +25,7 @@ function TableHeader() {
       display: 'grid', gridTemplateColumns: '100px 1fr 180px 130px 100px',
       gap: 2, px: 2.5, py: 1.25, borderBottom: `1px solid ${BORDER}`, bgcolor: PAPER2,
     }}>
-      {['ID', 'Subject', 'Department', 'Status', 'Updated'].map(h => (
+      {['Ticket Number', 'Subject', 'Department', 'Status', 'Updated'].map(h => (
         <Typography key={h} sx={{
           fontSize: 10.5, fontWeight: 700, color: TEXT_DIM,
           textTransform: 'uppercase', letterSpacing: '0.08em',

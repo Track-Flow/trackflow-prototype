@@ -1,11 +1,10 @@
+// ─── TLAHome.jsx ────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Card, Button, Avatar, Chip,
-  CircularProgress, Alert, Snackbar,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField,
+  CircularProgress, Alert,
 } from '@mui/material';
-import MuiAlert from '@mui/material/Alert';
 import api from '../helpers/api';
 import { statusMeta, priorityMeta, timeAgo, getUnassigned, getSLABreaches } from '../helpers/ticketHelpers';
 
@@ -17,13 +16,6 @@ const TEXT_DIM    = '#94a3b8';
 const TEXT_MUTED  = '#64748b';
 const TEXT_BRIGHT = '#e3e8f0';
 
-const FILTERS = [
-  { key: 'all',        label: 'All active'     },
-  { key: 'mine',       label: 'Assigned to me' },
-  { key: 'unassigned', label: 'Unassigned'     },
-  { key: 'sla',        label: 'SLA breach'     },
-];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -34,10 +26,36 @@ function firstName(fullName) {
   return fullName.split(' ')[0];
 }
 
+function sortByOldestFirst(list) {
+  return [...list].sort((a, b) => new Date(a.ticket_created_at) - new Date(b.ticket_created_at));
+}
+
+function formatDateTime(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  const datePart = d.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' });
+  const timePart = d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${datePart}, ${timePart}`;
+}
+
 // ─── KPI card ─────────────────────────────────────────────────────────────────
-function KpiCard({ label, value, color, sub }) {
+function KpiCard({ label, value, color, sub, onClick }) {
+  const clickable = typeof onClick === 'function';
   return (
-    <Card sx={{ flex: '1 1 140px', p: 2.5, bgcolor: PAPER, border: `1px solid ${BORDER}`, borderTop: `3px solid ${color}` }}>
+    <Card
+      onClick={onClick}
+      sx={{
+        flex: '1 1 140px', p: 2.5, bgcolor: PAPER, border: `1px solid ${BORDER}`,
+        borderTop: `3px solid ${color}`,
+        cursor: clickable ? 'pointer' : 'default',
+        transition: 'transform 120ms ease, background-color 120ms ease, border-color 120ms ease',
+        '&:hover': clickable ? {
+          transform: 'translateY(-1px)',
+          bgcolor: 'rgba(90,141,196,0.04)',
+          borderColor: 'rgba(148,163,184,0.20)',
+        } : {},
+      }}
+    >
       <Typography sx={{ fontSize: 10.5, color: TEXT_MUTED, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 0.5 }}>
         {label}
       </Typography>
@@ -49,73 +67,26 @@ function KpiCard({ label, value, color, sub }) {
   );
 }
 
-// ─── Resolution dialog ────────────────────────────────────────────────────────
-function ResolutionDialog({ open, onConfirm, onCancel }) {
-  const [notes, setNotes] = useState('');
-  const handleConfirm = () => { onConfirm(notes); setNotes(''); };
-  const handleCancel  = () => { onCancel();        setNotes(''); };
-
-  return (
-    <Dialog open={open} onClose={handleCancel} PaperProps={{
-      sx: { bgcolor: PAPER, border: `1px solid ${BORDER}`, borderRadius: 2, minWidth: { xs: '92vw', sm: 420 } },
-    }}>
-      <DialogTitle sx={{ color: TEXT_BRIGHT, fontWeight: 700, pb: 1 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <span className="material-symbols-outlined" style={{ color: '#5a8f72', fontSize: 20, fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-          Resolve Ticket
-        </Box>
-      </DialogTitle>
-      <DialogContent>
-        <Typography sx={{ color: TEXT_DIM, fontSize: 13, mb: 2 }}>
-          Add resolution notes before marking this ticket as resolved.
-        </Typography>
-        <TextField
-          autoFocus multiline rows={4} fullWidth
-          placeholder="Describe how the issue was resolved…"
-          value={notes}
-          onChange={e => setNotes(e.target.value)}
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              color: TEXT_BRIGHT, fontSize: 13,
-              '& fieldset': { borderColor: 'rgba(143,162,192,0.2)' },
-              '&:hover fieldset': { borderColor: 'rgba(143,162,192,0.4)' },
-              '&.Mui-focused fieldset': { borderColor: '#5a8f72' },
-            },
-          }}
-        />
-      </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
-        <Button onClick={handleCancel} variant="outlined" sx={{ color: TEXT_DIM, borderColor: 'rgba(143,162,192,0.2)' }}>Cancel</Button>
-        <Button
-          onClick={handleConfirm} disabled={!notes.trim()}
-          variant="contained" color="success"
-          startIcon={<span className="material-symbols-outlined" style={{ fontSize: 16 }}>check</span>}
-        >
-          Resolve
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-// ─── Ticket row ───────────────────────────────────────────────────────────────
-function TicketRow({ ticket, myId, onClaim, onUpdateStatus, onResolveClick }) {
+// ─── Ticket row (read-only) ────────────────────────────────────────────────────
+function TicketRow({ ticket }) {
   const navigate = useNavigate();
-  const s        = statusMeta(ticket.ticket_status);
-  const p        = priorityMeta(ticket.ticket_priority ?? 'low');
+  const s = statusMeta(ticket.ticket_status);
+  const p = priorityMeta(ticket.ticket_priority ?? 'low');
 
   const assignedUserId = ticket.assigned_user_id ?? ticket.assignee_id;
-  const isAssignedToMe = assignedUserId === myId;
-  const isResolved     = ticket.ticket_status === 'resolved';
-  const isStruggling   = ticket.ticket_status === 'struggling';
-  const isClaimed      = assignedUserId != null;
+  const isClaimed       = assignedUserId != null;
 
   return (
-    <Box sx={{
-      display: 'flex', alignItems: 'center', gap: 2,
-      py: 1.75, px: 0.5, borderBottom: `1px solid ${BORDER}`,
-      '&:last-child': { borderBottom: 'none' },
-    }}>
+    <Box
+      onClick={() => navigate(`/tickets/${ticket.ticket_id}`)}
+      sx={{
+        display: 'flex', alignItems: 'center', gap: 2,
+        py: 1.75, px: 0.5, borderBottom: `1px solid ${BORDER}`,
+        cursor: 'pointer',
+        '&:hover': { bgcolor: 'rgba(90,141,196,0.04)' },
+        '&:last-child': { borderBottom: 'none' },
+      }}
+    >
       {/* Priority bar */}
       <Box sx={{ width: 3, alignSelf: 'stretch', borderRadius: 999, bgcolor: p.color, flexShrink: 0 }} />
 
@@ -127,19 +98,12 @@ function TicketRow({ ticket, myId, onClaim, onUpdateStatus, onResolveClick }) {
             height: 18, fontSize: 9.5, fontWeight: 700,
             bgcolor: `${s.color}20`, color: s.color, border: `1px solid ${s.color}33`,
           }} />
-          {isStruggling && (
-            <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#8b5e6a', fontVariationSettings: "'FILL' 1" }}>flag</span>
-          )}
         </Box>
-        <Typography
-          onClick={() => navigate(`/tickets/${ticket.ticket_id}`)}
-          sx={{ fontSize: 13.5, fontWeight: 600, color: TEXT_BRIGHT, cursor: 'pointer', '&:hover': { color: ACCENT } }}
-          noWrap
-        >
+        <Typography sx={{ fontSize: 13.5, fontWeight: 600, color: TEXT_BRIGHT, '&:hover': { color: ACCENT } }} noWrap>
           {ticket.ticket_title}
         </Typography>
         <Typography sx={{ fontSize: 11.5, color: TEXT_DIM, mt: 0.2 }}>
-          {timeAgo(ticket.updated_at ?? ticket.created_at)}
+          {formatDateTime(ticket.ticket_created_at)}
           {' · '}
           {ticket.user_name ?? ticket.user_id ?? 'Unknown user'}
           {isClaimed ? (
@@ -150,53 +114,8 @@ function TicketRow({ ticket, myId, onClaim, onUpdateStatus, onResolveClick }) {
         </Typography>
       </Box>
 
-      {/* Actions */}
-      <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, alignItems: 'center' }}>
-        {!isClaimed && !isResolved && (
-          <Button
-            size="small" variant="contained"
-            onClick={() => onClaim(ticket.ticket_id)}
-            startIcon={<span className="material-symbols-outlined" style={{ fontSize: 13 }}>person_add</span>}
-            sx={{ fontSize: 11, py: 0.5, px: 1.5 }}
-          >
-            Claim
-          </Button>
-        )}
-        {isAssignedToMe && ticket.ticket_status === 'open' && (
-          <Button size="small" variant="outlined"
-            onClick={() => onUpdateStatus(ticket.ticket_id, 'in_progress')}
-            sx={{ fontSize: 11, py: 0.5, borderColor: 'rgba(196,154,74,0.5)', color: '#c49a4a',
-              '&:hover': { borderColor: '#c49a4a', bgcolor: 'rgba(196,154,74,0.08)' } }}
-          >
-            Start
-          </Button>
-        )}
-        {isAssignedToMe && ticket.ticket_status === 'struggling' && (
-          <Button size="small" variant="outlined"
-            onClick={() => onUpdateStatus(ticket.ticket_id, 'in_progress')}
-            sx={{ fontSize: 11, py: 0.5, borderColor: 'rgba(196,154,74,0.5)', color: '#c49a4a',
-              '&:hover': { borderColor: '#c49a4a', bgcolor: 'rgba(196,154,74,0.08)' } }}
-          >
-            Resume
-          </Button>
-        )}
-        {isAssignedToMe && (ticket.ticket_status === 'in_progress' || ticket.ticket_status === 'struggling') && (
-          <Button size="small" variant="outlined"
-            onClick={() => onResolveClick(ticket)}
-            startIcon={<span className="material-symbols-outlined" style={{ fontSize: 13 }}>check</span>}
-            sx={{ fontSize: 11, py: 0.5, borderColor: 'rgba(90,143,114,0.5)', color: '#5a8f72',
-              '&:hover': { borderColor: '#5a8f72', bgcolor: 'rgba(90,143,114,0.08)' } }}
-          >
-            Resolve
-          </Button>
-        )}
-        {isResolved && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.4, borderRadius: 1,
-            bgcolor: 'rgba(90,143,114,0.08)', border: '1px solid rgba(90,143,114,0.2)' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#5a8f72' }}>lock</span>
-            <Typography sx={{ fontSize: 11, color: '#5a8f72', fontWeight: 600 }}>Resolved</Typography>
-          </Box>
-        )}
+      <Box sx={{ flexShrink: 0 }}>
+        <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#475569' }}>chevron_right</span>
       </Box>
     </Box>
   );
@@ -229,7 +148,7 @@ function PulseItem({ ticket }) {
           </span>
         </Typography>
         <Typography sx={{ fontSize: 11, color: TEXT_MUTED, mt: 0.25 }}>
-          {timeAgo(ticket.updated_at ?? ticket.created_at)}
+          {timeAgo(ticket.ticket_updated_at ?? ticket.ticket_created_at)}
         </Typography>
       </Box>
     </Box>
@@ -241,12 +160,9 @@ export default function TLAHome() {
   const navigate = useNavigate();
   const user     = JSON.parse(localStorage.getItem('tf_user') ?? 'null');
 
-  const [tickets,       setTickets]       = useState([]);
-  const [loading,       setLoading]       = useState(true);
-  const [error,         setError]         = useState('');
-  const [filter,        setFilter]        = useState('all');
-  const [snack,         setSnack]         = useState({ open: false, message: '' });
-  const [resolveDialog, setResolveDialog] = useState({ open: false, ticket: null });
+  const [tickets, setTickets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState('');
 
   const fetchTickets = async () => {
     try {
@@ -268,65 +184,22 @@ export default function TLAHome() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleClaim = async (id) => {
-    try {
-      await api.patch(`/tickets/${id}`, { assignee_id: user.id });
-      setSnack({ open: true, message: `Ticket #${id} claimed.` });
-      fetchTickets();
-    } catch (err) {
-      setError(err.response?.data?.error ?? 'Failed to claim.');
-    }
-  };
-
-  const handleUpdateStatus = async (id, status) => {
-    try {
-      await api.patch(`/tickets/${id}`, { ticket_status: status });
-      fetchTickets();
-    } catch (err) {
-      setError(err.response?.data?.error ?? 'Failed to update.');
-    }
-  };
-
-  const handleResolveClick  = (ticket) => setResolveDialog({ open: true, ticket });
-  const handleResolveCancel = ()       => setResolveDialog({ open: false, ticket: null });
-  const handleResolveConfirm = async (notes) => {
-    const { ticket } = resolveDialog;
-    setResolveDialog({ open: false, ticket: null });
-    try {
-      await api.patch(`/tickets/${ticket.ticket_id}`, { ticket_status: 'resolved', resolution_notes: notes });
-      fetchTickets();
-    } catch (err) {
-      setError(err.response?.data?.error ?? 'Failed to resolve.');
-    }
-  };
-
   // Derived
-  const active      = tickets.filter(t => !['resolved', 'closed'].includes(t.ticket_status));
   const myTickets   = tickets.filter(t => (t.assigned_user_id ?? t.assignee_id) === user?.id);
   const unassigned  = getUnassigned(tickets);
   const slaBreaches = getSLABreaches(tickets);
   const resolvedToday = tickets.filter(t =>
     t.ticket_status === 'resolved' &&
-    new Date(t.updated_at).toDateString() === new Date().toDateString()
+    new Date(t.ticket_updated_at).toDateString() === new Date().toDateString()
   );
 
   const teamPulse = [...tickets]
     .filter(t => (t.assigned_user_id ?? t.assignee_id) != null)
-    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+    .sort((a, b) => new Date(b.ticket_updated_at) - new Date(a.ticket_updated_at))
     .slice(0, 8);
 
-  const displayed =
-    filter === 'mine'       ? myTickets
-    : filter === 'unassigned' ? unassigned
-    : filter === 'sla'        ? slaBreaches
-    : active;
-
-  const filterCounts = {
-    all:        active.length,
-    mine:       myTickets.length,
-    unassigned: unassigned.length,
-    sla:        slaBreaches.length,
-  };
+  // Task feed: open tickets only, oldest first (FIFO)
+  const openQueue = sortByOldestFirst(tickets.filter(t => t.ticket_status === 'open'));
 
   const hour     = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -345,57 +218,62 @@ export default function TLAHome() {
 
       {/* KPIs */}
       <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-        <KpiCard label="My active"      value={myTickets.filter(t => !['resolved','closed'].includes(t.ticket_status)).length}
-                 color={ACCENT} />
-        <KpiCard label="Unassigned"     value={unassigned.length} color="#c49a4a"
-                 sub={unassigned.length > 0 ? 'Needs attention' : 'All clear'} />
-        <KpiCard label="Resolved today" value={resolvedToday.length} color="#5a8f72" />
-        <KpiCard label="Overdue"        value={slaBreaches.length} color="#8b5e6a"
-                 sub={slaBreaches.length > 0 ? 'Needs attention' : 'All on track'} />
+        <KpiCard
+          label="My active"
+          value={myTickets.filter(t => !['resolved','closed'].includes(t.ticket_status)).length}
+          color={ACCENT}
+          onClick={() => navigate('/tla/queue')}
+        />
+        <KpiCard
+          label="Unassigned"
+          value={unassigned.length}
+          color="#c49a4a"
+          sub={unassigned.length > 0 ? 'Needs attention' : 'All clear'}
+          onClick={() => navigate('/tla/board?filter=unassigned')}
+        />
+        <KpiCard
+          label="Resolved today"
+          value={resolvedToday.length}
+          color="#5a8f72"
+          onClick={() => navigate('/tla/board?filter=resolved-today')}
+        />
+        <KpiCard
+          label="Overdue"
+          value={slaBreaches.length}
+          color="#8b5e6a"
+          sub={slaBreaches.length > 0 ? 'Needs attention' : 'All on track'}
+          onClick={() => navigate('/tla/board?filter=overdue')}
+        />
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'flex-start' }}>
 
-        {/* Ticket queue */}
+        {/* Task feed — open tickets, FIFO */}
         <Card sx={{ flex: '1 1 480px', p: 3, bgcolor: PAPER, border: `1px solid ${BORDER}` }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Typography sx={{ fontSize: 13, fontWeight: 700, color: TEXT_BRIGHT }}>
-              Task feed
-            </Typography>
-            <Button size="small" onClick={() => navigate('/tla/board')}
-              endIcon={<span className="material-symbols-outlined" style={{ fontSize: 14 }}>view_kanban</span>}
-              sx={{ fontSize: 11, color: ACCENT }}>
-              Board view
-            </Button>
-          </Box>
-
-          {/* Filter tabs */}
-          <Box sx={{ display: 'flex', gap: 0.5, mb: 2, flexWrap: 'wrap' }}>
-            {FILTERS.map(f => {
-              const active = filter === f.key;
-              return (
-                <Button key={f.key} size="small" onClick={() => setFilter(f.key)}
-                  sx={{
-                    fontSize: 11, py: 0.4, px: 1.25, borderRadius: 1.5, gap: 0.75,
-                    fontWeight: active ? 700 : 400,
-                    color: active ? ACCENT : TEXT_DIM,
-                    bgcolor: active ? `${ACCENT}15` : 'transparent',
-                  }}
-                >
-                  {f.label}
-                  <Box sx={{
-                    px: 0.6, py: 0.05, borderRadius: 999,
-                    bgcolor: active ? ACCENT : '#1a2d4a',
-                    fontSize: 10, fontWeight: 700,
-                    color: active ? '#0a1628' : TEXT_MUTED,
-                  }}>
-                    {filterCounts[f.key]}
-                  </Box>
-                </Button>
-              );
-            })}
+            <Box>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, color: TEXT_BRIGHT }}>
+                Task feed
+              </Typography>
+              <Typography sx={{ fontSize: 11, color: TEXT_MUTED, mt: 0.25 }}>
+                Open tickets · oldest first
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{
+                px: 0.8, py: 0.15, borderRadius: 999, fontSize: 11, fontWeight: 700,
+                bgcolor: `${ACCENT}18`, color: ACCENT, border: `1px solid ${ACCENT}33`,
+              }}>
+                {openQueue.length}
+              </Box>
+              <Button size="small" onClick={() => navigate('/tla/board')}
+                endIcon={<span className="material-symbols-outlined" style={{ fontSize: 14 }}>view_kanban</span>}
+                sx={{ fontSize: 11, color: ACCENT }}>
+                Board view
+              </Button>
+            </Box>
           </Box>
 
           {loading && (
@@ -403,18 +281,14 @@ export default function TLAHome() {
               <CircularProgress size={28} sx={{ color: ACCENT }} />
             </Box>
           )}
-          {!loading && displayed.length === 0 && (
+          {!loading && openQueue.length === 0 && (
             <Box sx={{ textAlign: 'center', py: 4 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 40, color: TEXT_MUTED, display: 'block', marginBottom: 8 }}>done_all</span>
               <Typography sx={{ color: TEXT_DIM, fontSize: 13 }}>Queue is clear.</Typography>
             </Box>
           )}
-          {!loading && displayed.map(t => (
-            <TicketRow key={t.ticket_id} ticket={t} myId={user?.id}
-              onClaim={handleClaim}
-              onUpdateStatus={handleUpdateStatus}
-              onResolveClick={handleResolveClick}
-            />
+          {!loading && openQueue.map(t => (
+            <TicketRow key={t.ticket_id} ticket={t} />
           ))}
         </Card>
 
@@ -439,27 +313,6 @@ export default function TLAHome() {
           ))}
         </Card>
       </Box>
-
-      <ResolutionDialog
-        open={resolveDialog.open}
-        onConfirm={handleResolveConfirm}
-        onCancel={handleResolveCancel}
-      />
-
-      <Snackbar
-        open={snack.open}
-        autoHideDuration={4000}
-        onClose={() => setSnack({ open: false, message: '' })}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <MuiAlert
-          onClose={() => setSnack({ open: false, message: '' })}
-          severity="success" variant="filled"
-          sx={{ bgcolor: '#5a8f72', color: '#0a1628', fontWeight: 700 }}
-        >
-          {snack.message}
-        </MuiAlert>
-      </Snackbar>
     </Box>
   );
 }

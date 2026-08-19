@@ -1,3 +1,4 @@
+// ─── TicketDetail.jsx ───────────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -18,8 +19,26 @@ const ROLE_ACCENT = {
   tla: '#5a8dc4', mss_manager: '#7a6fa8', end_user: '#5a8dc4', admin: '#c49a4a',
 };
 
+const STATUS_COLORS = {
+  open: '#5a8dc4', in_progress: '#c49a4a', struggling: '#8b5e6a',
+  resolved: '#5a8f72', closed: '#475569',
+};
+
+const STATUS_ICONS = {
+  open: 'inbox', in_progress: 'pending_actions', struggling: 'flag',
+  resolved: 'check_circle', closed: 'lock',
+};
+
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+}
+
+function formatDateTime(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  const datePart = d.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
+  const timePart = d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${datePart}, ${timePart}`;
 }
 
 // ─── Note dialog (Resolve + Struggling) ───────────────────────────────────────
@@ -91,6 +110,115 @@ function NoteDialog({ open, mode, onConfirm, onCancel }) {
   );
 }
 
+// ─── Lifecycle / history dialog ───────────────────────────────────────────────
+function HistoryEntry({ entry, isLast }) {
+  const color = STATUS_COLORS[entry.new_status] ?? TEXT_MUTED;
+  const icon  = STATUS_ICONS[entry.new_status] ?? 'radio_button_checked';
+
+  return (
+    <Box sx={{ display: 'flex', gap: 1.5 }}>
+      {/* Timeline rail */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+        <Box sx={{
+          width: 28, height: 28, borderRadius: '50%', display: 'grid', placeItems: 'center',
+          bgcolor: `${color}20`, border: `2px solid ${color}`,
+        }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 15, color, fontVariationSettings: "'FILL' 1" }}>
+            {icon}
+          </span>
+        </Box>
+        {!isLast && <Box sx={{ width: '2px', flex: 1, minHeight: 20, bgcolor: BORDER, mt: 0.5 }} />}
+      </Box>
+
+      {/* Content */}
+      <Box sx={{ flex: 1, pb: 2.5, minWidth: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', mb: 0.6 }}>
+          {entry.old_status && (
+            <>
+              <Chip label={entry.old_status.replace('_', ' ')} size="small" sx={{
+                height: 20, fontSize: 10.5, fontWeight: 700, textTransform: 'capitalize',
+                bgcolor: 'rgba(148,163,184,0.12)', color: TEXT_DIM,
+              }} />
+              <span className="material-symbols-outlined" style={{ fontSize: 13, color: TEXT_MUTED }}>arrow_forward</span>
+            </>
+          )}
+          <Chip label={entry.new_status.replace('_', ' ')} size="small" sx={{
+            height: 20, fontSize: 10.5, fontWeight: 700, textTransform: 'capitalize',
+            bgcolor: `${color}25`, color, border: `1px solid ${color}`,
+          }} />
+        </Box>
+
+        {entry.note && (
+          <Box sx={{
+            display: 'inline-block', px: 1.5, py: 1, borderRadius: 1.5, mb: 0.75,
+            bgcolor: `${color}14`, borderLeft: `3px solid ${color}`,
+          }}>
+            <Typography sx={{ fontSize: 14, color: '#ffffff', lineHeight: 1.5, whiteSpace: 'pre-wrap', fontWeight: 600 }}>
+              {entry.note}
+            </Typography>
+          </Box>
+        )}
+
+        <Typography sx={{ fontSize: 11.5, color: TEXT_DIM, display: 'block' }}>
+          {entry.changed_by_name ?? entry.changed_by} · {formatDateTime(entry.changed_at)}
+        </Typography>
+      </Box>
+    </Box>
+  );
+}
+
+function HistoryDialog({ open, onClose, ticketId }) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState('');
+
+  useEffect(() => {
+    if (!open || !ticketId) return;
+    setLoading(true);
+    setError('');
+    api.get(`/tickets/${ticketId}/history`)
+      .then(res => setHistory(res.data))
+      .catch(err => setError(err.response?.data?.error ?? 'Failed to load history.'))
+      .finally(() => setLoading(false));
+  }, [open, ticketId]);
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth PaperProps={{
+      sx: { bgcolor: PAPER, border: `1px solid ${BORDER}`, borderRadius: 2.5, maxHeight: '85vh' },
+    }}>
+      <DialogTitle sx={{ color: TEXT_BRIGHT, fontWeight: 700, fontSize: 17, pt: 2.5, pb: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <span className="material-symbols-outlined" style={{ color: '#5a8dc4', fontSize: 20 }}>history</span>
+          Ticket lifecycle
+        </Box>
+      </DialogTitle>
+      <DialogContent dividers sx={{ borderColor: BORDER, px: 2.5, py: 2, maxHeight: '60vh' }}>
+        {loading && (
+          <Box sx={{ textAlign: 'center', py: 3 }}>
+            <CircularProgress size={24} sx={{ color: '#5a8dc4' }} />
+          </Box>
+        )}
+        {!loading && error && <Alert severity="error">{error}</Alert>}
+        {!loading && !error && history.length === 0 && (
+          <Typography sx={{ color: TEXT_DIM, fontSize: 13, textAlign: 'center', py: 3 }}>
+            No status changes recorded yet.
+          </Typography>
+        )}
+        {!loading && !error && history.length > 0 && (
+          <Box sx={{ pt: 0.5 }}>
+            {history.map((entry, i) => (
+              <HistoryEntry key={entry.log_id} entry={entry} isLast={i === history.length - 1} />
+            ))}
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 2.5, py: 1.5, flexShrink: 0 }}>
+        <Button onClick={onClose} size="small" sx={{ color: TEXT_DIM }}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 // ─── Small info row ───────────────────────────────────────────────────────────
 function InfoRow({ label, children }) {
   return (
@@ -143,6 +271,8 @@ export default function TicketDetail() {
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState('');
   const [noteDialog, setNoteDialog] = useState({ open: false, mode: null });
+  const [claiming,   setClaiming]   = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   // TODO: replace with GET /api/tickets/:id/comments when endpoint exists
   const [comments, setComments] = useState([]);
@@ -163,6 +293,14 @@ export default function TicketDetail() {
     tla: '/tla', mss_manager: '/manager', end_user: '/home', admin: '/helpdesk',
   }[user?.role] ?? '/';
 
+  const handleBack = () => {
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate(backPath);
+    }
+  };
+
   const handleNoteConfirm = async (notes) => {
     const mode = noteDialog.mode;
     setNoteDialog({ open: false, mode: null });
@@ -180,6 +318,20 @@ export default function TicketDetail() {
       fetchTicket();
     } catch (err) {
       setError(err.response?.data?.error ?? 'Failed to update ticket.');
+    }
+  };
+
+  const handleClaim = async () => {
+    setClaiming(true);
+    setError('');
+    try {
+      // No ticket_status sent — backend auto-progresses to in_progress on claim
+      await api.patch(`/tickets/${id}`, { assignee_id: user?.id });
+      fetchTicket();
+    } catch (err) {
+      setError(err.response?.data?.error ?? 'Failed to claim ticket. It may already be claimed.');
+    } finally {
+      setClaiming(false);
     }
   };
 
@@ -209,7 +361,13 @@ export default function TicketDetail() {
   if (error && !ticket) return (
     <Box>
       <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
-      <Button onClick={() => navigate(backPath)}>← Back</Button>
+      <Button
+        startIcon={<span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_back</span>}
+        onClick={handleBack}
+        sx={{ color: TEXT_DIM, mb: 2, '&:hover': { color: TEXT_BRIGHT } }}
+      >
+        Back
+      </Button>
     </Box>
   );
 
@@ -223,20 +381,38 @@ export default function TicketDetail() {
   const assigneeFirst   = assigneeName ? assigneeName.split(' ')[0] : null;
   const assigneeDisplay = assigneeName ?? assignedUserId ?? null;
 
-  const isResolved     = ticket.ticket_status === 'resolved';
-  const isStruggling   = ticket.ticket_status === 'struggling';
-  const isAssignedToMe = assignedUserId === user?.id;
-  const isTLA          = user?.role === 'tla';
-  const canAct         = isTLA && isAssignedToMe && !isResolved && ticket.ticket_status !== 'closed';
+  const isResolved      = ticket.ticket_status === 'resolved';
+  const isClosed        = ticket.ticket_status === 'closed';
+  const isStruggling    = ticket.ticket_status === 'struggling';
+  const isClaimed       = assignedUserId != null;
+  const isAssignedToMe  = assignedUserId === user?.id;
+  const isTLA           = user?.role === 'tla';
+
+  const canClaim  = isTLA && !isClaimed && !isResolved && !isClosed;
+  const canManage = isTLA && isAssignedToMe && !isResolved && !isClosed;
 
   return (
     <Box>
       <Button
         startIcon={<span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_back</span>}
-        onClick={() => navigate(backPath)}
+        onClick={handleBack}
         sx={{ color: TEXT_DIM, mb: 2, '&:hover': { color: TEXT_BRIGHT } }}
       >
         Back
+      </Button>
+
+      <Button
+        fullWidth
+        onClick={() => setHistoryOpen(true)}
+        startIcon={<span className="material-symbols-outlined" style={{ fontSize: 18 }}>history</span>}
+        sx={{
+          fontSize: 13.5, fontWeight: 700, color: '#5a8dc4', mb: 2,
+          py: 1.1, borderRadius: 2,
+          bgcolor: 'rgba(90,141,196,0.10)', border: '1px solid rgba(90,141,196,0.35)',
+          '&:hover': { bgcolor: 'rgba(90,141,196,0.18)', borderColor: 'rgba(90,141,196,0.55)' },
+        }}
+      >
+        View ticket lifecycle
       </Button>
 
       {error && <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -260,6 +436,15 @@ export default function TicketDetail() {
                 fontSize: 11, fontWeight: 700, height: 22,
                 bgcolor: `${pColor}20`, color: pColor, border: `1px solid ${pColor}44`,
               }} />
+              {!isClaimed && !isResolved && !isClosed && (
+                <Box sx={{
+                  display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.3, borderRadius: 1,
+                  bgcolor: 'rgba(196,154,74,0.10)', border: '1px solid rgba(196,154,74,0.3)',
+                }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#c49a4a' }}>lock</span>
+                  <Typography sx={{ fontSize: 11, color: '#c49a4a', fontWeight: 700 }}>Claim first</Typography>
+                </Box>
+              )}
               {isResolved && (
                 <Box sx={{
                   display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.3, borderRadius: 1,
@@ -284,7 +469,7 @@ export default function TicketDetail() {
               {ticket.ticket_title}
             </Typography>
             <Typography sx={{ fontSize: 12.5, color: TEXT_MUTED }}>
-              Submitted {timeAgo(ticket.created_at)}
+              Submitted {timeAgo(ticket.ticket_created_at)}
             </Typography>
           </Card>
 
@@ -318,8 +503,32 @@ export default function TicketDetail() {
             </Card>
           )}
 
-          {/* Actions — TLA only */}
-          {canAct && (
+          {/* Claim — TLA, unclaimed */}
+          {canClaim && (
+            <Card sx={{ p: 2.5, mb: 2, bgcolor: PAPER, border: `1px solid ${BORDER}` }}>
+              <Typography sx={{
+                fontSize: 11, color: TEXT_MUTED, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1.5,
+              }}>
+                Actions
+              </Typography>
+              <Button
+                variant="contained" size="small"
+                disabled={claiming}
+                onClick={handleClaim}
+                startIcon={
+                  claiming
+                    ? <CircularProgress size={13} sx={{ color: '#0a1628' }} />
+                    : <span className="material-symbols-outlined" style={{ fontSize: 15 }}>person_add</span>
+                }
+                sx={{ fontSize: 12, fontWeight: 700 }}
+              >
+                {claiming ? 'Claiming…' : 'Claim ticket'}
+              </Button>
+            </Card>
+          )}
+
+          {/* Actions — TLA, assigned to me */}
+          {canManage && (
             <Card sx={{ p: 2.5, mb: 2, bgcolor: PAPER, border: `1px solid ${BORDER}` }}>
               <Typography sx={{
                 fontSize: 11, color: TEXT_MUTED, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1.5,
@@ -327,16 +536,6 @@ export default function TicketDetail() {
                 Actions
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                {ticket.ticket_status === 'open' && (
-                  <Button
-                    variant="outlined" size="small"
-                    onClick={() => patchStatus('in_progress')}
-                    startIcon={<span className="material-symbols-outlined" style={{ fontSize: 15 }}>play_arrow</span>}
-                    sx={{ fontSize: 12, color: '#c49a4a', borderColor: 'rgba(196,154,74,0.4)' }}
-                  >
-                    Start
-                  </Button>
-                )}
                 {ticket.ticket_status === 'struggling' && (
                   <Button
                     variant="outlined" size="small"
@@ -347,7 +546,7 @@ export default function TicketDetail() {
                     Resume
                   </Button>
                 )}
-                {(ticket.ticket_status === 'open' || ticket.ticket_status === 'in_progress') && (
+                {ticket.ticket_status === 'in_progress' && (
                   <Button
                     variant="outlined" size="small"
                     onClick={() => setNoteDialog({ open: true, mode: 'struggling' })}
@@ -449,10 +648,10 @@ export default function TicketDetail() {
               </Typography>
             </InfoRow>
             <InfoRow label="Submitted">
-              <Typography sx={{ fontSize: 12, color: TEXT_BRIGHT }}>{timeAgo(ticket.created_at)}</Typography>
+              <Typography sx={{ fontSize: 12, color: TEXT_BRIGHT }}>{timeAgo(ticket.ticket_created_at)}</Typography>
             </InfoRow>
             <InfoRow label="Updated">
-              <Typography sx={{ fontSize: 12, color: TEXT_BRIGHT }}>{timeAgo(ticket.updated_at)}</Typography>
+              <Typography sx={{ fontSize: 12, color: TEXT_BRIGHT }}>{timeAgo(ticket.ticket_updated_at)}</Typography>
             </InfoRow>
             <InfoRow label="Escalated">
               <Typography sx={{
@@ -506,6 +705,12 @@ export default function TicketDetail() {
         mode={noteDialog.mode}
         onConfirm={handleNoteConfirm}
         onCancel={() => setNoteDialog({ open: false, mode: null })}
+      />
+
+      <HistoryDialog
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        ticketId={id}
       />
     </Box>
   );

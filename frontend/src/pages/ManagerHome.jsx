@@ -193,7 +193,7 @@ export default function ManagerHome() {
               <Table size="small" sx={{ minWidth: 500 }}>
                 <TableHead>
                   <TableRow>
-                    {['ID', 'Title', 'Dept', 'Status', 'Updated'].map(h => (
+                    {['Ticket Number', 'Title', 'Dept', 'Status', 'Updated'].map(h => (
                       <TableCell key={h} sx={{
                         fontSize: 10.5, fontWeight: 700, color: TEXT_DIM,
                         borderColor: BORDER, textTransform: 'uppercase', letterSpacing: '0.08em',

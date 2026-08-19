@@ -41,6 +41,13 @@ export const ROLE_HOME = {
   admin:       '/helpdesk',
 };
 
+export const ROLE_PROFILE = {
+  end_user:    '/home/profile',
+  tla:         '/tla/profile',
+  mss_manager: '/manager/profile',
+  admin:       '/helpdesk/profile',
+};
+
 const NAV = {
   tla: [
     { group: 'Workspace' },
@@ -84,10 +91,13 @@ const PAGE_TITLES = {
   '/home': 'Home', '/submit': 'Submit ticket', '/home/tickets': 'My tickets',
   '/home/inbox': 'Notifications', '/home/profile': 'Profile',
   '/tla': 'Dashboard', '/tla/board': 'Board', '/tla/queue': 'My queue', '/tla/inbox': 'Inbox',
+  '/tla/profile': 'Profile',
   '/manager': 'Overview', '/manager/tickets': 'All tickets', '/manager/depts': 'Departments',
   '/manager/reports': 'Reports', '/manager/exports': 'Export Reports', '/manager/tlas': 'TLAs',
+  '/manager/profile': 'Profile',
   '/helpdesk': 'Unrouted queue', '/helpdesk/tickets': 'All tickets',
   '/helpdesk/users': 'User access', '/helpdesk/cats': 'Categories', '/helpdesk/audit': 'Audit log',
+  '/helpdesk/profile': 'Profile',
 };
 
 function getInitials(name) {
@@ -193,14 +203,23 @@ function SidebarContent({ role, accent, user, onNavClick, onLogout }) {
 
       <Divider sx={{ borderColor: BORDER, mx: 2 }} />
       <Box sx={{ p: 1.75, display: 'flex', alignItems: 'center', gap: 1.25 }}>
-        <Avatar sx={{ width: 30, height: 30, fontSize: 11, fontWeight: 700, bgcolor: `${accent}22`, color: accent, flexShrink: 0 }}>
-          {getInitials(user?.name)}
-        </Avatar>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography sx={{ fontSize: 12, fontWeight: 600, color: TEXT_BRIGHT }} noWrap>{user?.name ?? 'User'}</Typography>
-          <Typography sx={{ fontSize: 10.5, color: TEXT_MUTED, textTransform: 'capitalize' }} noWrap>
-            {role?.replace('_', ' ')}
-          </Typography>
+        <Box
+          onClick={() => go(ROLE_PROFILE[role] ?? '/home/profile')}
+          sx={{
+            flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1.25,
+            cursor: 'pointer', borderRadius: 1, p: 0.5, m: -0.5,
+            '&:hover': { background: 'rgba(255,255,255,0.04)' },
+          }}
+        >
+          <Avatar sx={{ width: 30, height: 30, fontSize: 11, fontWeight: 700, bgcolor: `${accent}22`, color: accent, flexShrink: 0 }}>
+            {getInitials(user?.name)}
+          </Avatar>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 600, color: TEXT_BRIGHT }} noWrap>{user?.name ?? 'User'}</Typography>
+            <Typography sx={{ fontSize: 10.5, color: TEXT_MUTED, textTransform: 'capitalize' }} noWrap>
+              {role?.replace('_', ' ')}
+            </Typography>
+          </Box>
         </Box>
         <Tooltip title="Sign out" arrow>
           <IconButton size="small" onClick={onLogout} sx={{ color: TEXT_MUTED, '&:hover': { color: '#ff6b6b' } }}>

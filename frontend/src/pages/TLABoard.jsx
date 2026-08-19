@@ -1,28 +1,37 @@
+// ─── TLABoard.jsx ───────────────────────────────────────────────────────────
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Avatar, Button, CircularProgress,
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Alert, Tooltip,
 } from '@mui/material';
 import api from '../helpers/api';
-import { priorityMeta, timeAgo } from '../helpers/ticketHelpers';
+import { priorityMeta, timeAgo, getSLABreaches } from '../helpers/ticketHelpers';
 
 // ─── Theme tokens (prototype palette) ─────────────────────────────────────────
 const ACCENT      = '#5a8dc4';
 const TEXT_DIM    = '#94a3b8';
 const TEXT_BRIGHT = '#e3e8f0';
 const BORDER      = 'rgba(148,163,184,0.10)';
+const STRUGGLING  = '#e5484d'; // bright red
+const MINE        = '#2bb3a3'; // teal — tickets assigned to me
 
 const COLUMNS = [
   { key: 'open',        label: 'Open',        color: '#5a8dc4', icon: 'inbox'           },
   { key: 'in_progress', label: 'In Progress', color: '#c49a4a', icon: 'pending_actions' },
-  { key: 'struggling',  label: 'Struggling',  color: '#7a6fa8', icon: 'flag'            },
+  { key: 'struggling',  label: 'Struggling',  color: STRUGGLING, icon: 'flag'           },
   { key: 'resolved',    label: 'Resolved',    color: '#5a8f72', icon: 'check_circle'    },
   { key: 'closed',      label: 'Closed',      color: '#475569', icon: 'lock'            },
 ];
 
 const DROPPABLE = ['open', 'in_progress', 'struggling', 'resolved'];
+
+const FILTER_LABELS = {
+  unassigned:      'Unassigned tickets',
+  'resolved-today': 'Resolved today',
+  overdue:         'Overdue (SLA breach)',
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getInitials(name = '') {
@@ -35,7 +44,11 @@ function getPriorityColor(priority) {
 }
 
 function sortByOldestFirst(list) {
-  return [...list].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  return [...list].sort((a, b) => new Date(a.ticket_created_at) - new Date(b.ticket_created_at));
+}
+
+function sortByMostRecentlyUpdated(list) {
+  return [...list].sort((a, b) => new Date(b.ticket_updated_at) - new Date(a.ticket_updated_at));
 }
 
 function cardLockState(ticket, userId) {
@@ -46,6 +59,23 @@ function cardLockState(ticket, userId) {
   const isResolved   = ticket.ticket_status === 'resolved';
   const draggable    = isOwned && !isClosed;
   return { isClaimed, isOwned, isOtherOwned, isClosed, isResolved, draggable };
+}
+
+function applyFilter(list, filterKey) {
+  if (filterKey === 'unassigned') {
+    return list.filter(t => t.assigned_user_id == null);
+  }
+  if (filterKey === 'resolved-today') {
+    return list.filter(t =>
+      t.ticket_status === 'resolved' &&
+      new Date(t.ticket_updated_at).toDateString() === new Date().toDateString()
+    );
+  }
+  if (filterKey === 'overdue') {
+    const breachIds = new Set(getSLABreaches(list).map(t => t.ticket_id));
+    return list.filter(t => breachIds.has(t.ticket_id));
+  }
+  return list;
 }
 
 // ─── Note dialog (Resolve + Struggling) ───────────────────────────────────────
@@ -64,7 +94,7 @@ function NoteDialog({ open, mode, onConfirm, onCancel }) {
         confirmLabel: 'Resolve', confirmColor: 'success', confirmIcon: 'check',
       }
     : {
-        icon: 'flag', iconColor: '#8b5e6a',
+        icon: 'flag', iconColor: STRUGGLING,
         title: 'Flag as Struggling',
         helper: "Let the team know what you're stuck on before flagging this ticket.",
         placeholder: "What are you stuck on?",
@@ -188,6 +218,8 @@ function TicketCard({ ticket, onDragStart, onClick, onClaim, isDragging, isClaim
         bgcolor: isClosed     ? 'rgba(71,85,105,0.08)'
                : isResolved   ? 'rgba(90,143,114,0.05)'
                : !isClaimed   ? 'rgba(196,154,74,0.05)'
+               : isStruggling ? 'rgba(229,72,77,0.06)'
+               : isOwned      ? 'rgba(43,179,163,0.08)'
                : isDragging   ? 'rgba(90,141,196,0.1)'
                : '#0d1e38',
         border: `1px solid ${
@@ -195,7 +227,8 @@ function TicketCard({ ticket, onDragStart, onClick, onClaim, isDragging, isClaim
           : isClosed   ? 'rgba(71,85,105,0.25)'
           : isResolved ? 'rgba(90,143,114,0.25)'
           : !isClaimed ? 'rgba(196,154,74,0.3)'
-          : isStruggling ? 'rgba(122,111,168,0.35)'
+          : isStruggling ? 'rgba(229,72,77,0.35)'
+          : isOwned    ? 'rgba(43,179,163,0.4)'
           : BORDER
         }`,
         cursor: draggable ? 'grab' : 'pointer',
@@ -205,7 +238,7 @@ function TicketCard({ ticket, onDragStart, onClick, onClaim, isDragging, isClaim
         transform: isDragging ? 'rotate(1.5deg) scale(1.02)' : 'none',
         boxShadow: isDragging ? `0 8px 24px rgba(0,0,0,0.4), 0 0 0 2px ${ACCENT}44` : 'none',
         '&:hover': !isClosed ? {
-          borderColor: !isClaimed ? 'rgba(196,154,74,0.5)' : isOwned ? `${ACCENT}55` : 'rgba(148,163,184,0.2)',
+          borderColor: !isClaimed ? 'rgba(196,154,74,0.5)' : isOwned ? `${MINE}70` : 'rgba(148,163,184,0.2)',
           transform: isDragging ? 'rotate(1.5deg) scale(1.02)' : 'translateY(-1px)',
           boxShadow: isDragging ? undefined : '0 4px 20px rgba(0,0,0,0.3)',
         } : {},
@@ -215,14 +248,26 @@ function TicketCard({ ticket, onDragStart, onClick, onClaim, isDragging, isClaim
       {/* Left accent bar */}
       <Box sx={{
         position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, borderRadius: '2px 0 0 2px',
-        bgcolor: isClosed ? '#475569' : isResolved ? '#5a8f72' : isOwned ? ACCENT : !isClaimed ? '#c49a4a' : priorityColor,
+        bgcolor: isClosed ? '#475569' : isResolved ? '#5a8f72' : !isClaimed ? '#c49a4a' : isStruggling ? STRUGGLING : isOwned ? MINE : priorityColor,
       }} />
 
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1, pl: 0.5 }}>
-        <Typography sx={{ fontFamily: 'monospace', fontSize: 10.5, color: '#5b8ec2', fontWeight: 600 }}>
-          #{ticket.ticket_id}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          <Typography sx={{ fontFamily: 'monospace', fontSize: 10.5, color: '#5b8ec2', fontWeight: 600 }}>
+            #{ticket.ticket_id}
+          </Typography>
+          {isOwned && !isResolved && !isClosed && (
+            <Box sx={{
+              px: 0.6, py: 0.05, borderRadius: 0.5,
+              bgcolor: `${MINE}22`, border: `1px solid ${MINE}55`,
+            }}>
+              <Typography sx={{ fontSize: 8.5, fontWeight: 800, color: MINE, letterSpacing: '0.06em' }}>
+                YOURS
+              </Typography>
+            </Box>
+          )}
+        </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
           {isClosed ? (
             <Tooltip title="Closed — locked" arrow>
@@ -239,7 +284,7 @@ function TicketCard({ ticket, onDragStart, onClick, onClaim, isDragging, isClaim
           ) : null}
           {isStruggling && (
             <Tooltip title="Flagged as struggling" arrow>
-              <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#8b5e6a', fontVariationSettings: "'FILL' 1" }}>flag</span>
+              <span className="material-symbols-outlined" style={{ fontSize: 13, color: STRUGGLING, fontVariationSettings: "'FILL' 1" }}>flag</span>
             </Tooltip>
           )}
           {ticket.ticket_priority && (
@@ -280,10 +325,10 @@ function TicketCard({ ticket, onDragStart, onClick, onClaim, isDragging, isClaim
         {isClaimed ? (
           <Tooltip title={assigneeName} arrow>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <Avatar sx={{ width: 22, height: 22, fontSize: 9, fontWeight: 700, bgcolor: `${ACCENT}25`, color: ACCENT }}>
+              <Avatar sx={{ width: 22, height: 22, fontSize: 9, fontWeight: 700, bgcolor: isOwned ? `${MINE}25` : `${ACCENT}25`, color: isOwned ? MINE : ACCENT }}>
                 {assigneeInitials}
               </Avatar>
-              <Typography sx={{ fontSize: 10, color: '#5b8ec2', fontWeight: 600 }}>
+              <Typography sx={{ fontSize: 10, color: isOwned ? MINE : '#5b8ec2', fontWeight: 600 }}>
                 {assigneeFirst}
               </Typography>
             </Box>
@@ -309,7 +354,7 @@ function TicketCard({ ticket, onDragStart, onClick, onClaim, isDragging, isClaim
           </Button>
         )}
         <Typography sx={{ fontSize: 10.5, color: '#3a4f6a' }}>
-          {timeAgo(ticket.updated_at ?? ticket.created_at)}
+          {timeAgo(ticket.ticket_updated_at ?? ticket.ticket_created_at)}
         </Typography>
       </Box>
 
@@ -317,7 +362,7 @@ function TicketCard({ ticket, onDragStart, onClick, onClaim, isDragging, isClaim
       {ticket.ticket_escalated === 1 && (
         <Box sx={{
           position: 'absolute', top: 6, right: 6, width: 6, height: 6, borderRadius: '50%',
-          bgcolor: '#8b5e6a', boxShadow: '0 0 0 2px rgba(139,94,106,0.3)',
+          bgcolor: STRUGGLING, boxShadow: '0 0 0 2px rgba(229,72,77,0.3)',
         }} />
       )}
     </Box>
@@ -389,6 +434,9 @@ function KanbanColumn({ col, tickets, draggingId, claimingId, onDragStart, onDro
 export default function TLABoard() {
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('tf_user') ?? 'null');
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeFilter = searchParams.get('filter'); // 'unassigned' | 'resolved-today' | 'overdue' | null
 
   const [tickets,    setTickets]    = useState([]);
   const [loading,    setLoading]    = useState(true);
@@ -502,7 +550,12 @@ export default function TLABoard() {
     await performUpdate(ticket, mode, notes);
   };
 
-  const ticketsByCol = col => sortByOldestFirst(tickets.filter(t => t.ticket_status === col));
+  const ticketsByCol = col => {
+    const scoped = applyFilter(tickets, activeFilter).filter(t => t.ticket_status === col);
+    return col === 'open' ? sortByOldestFirst(scoped) : sortByMostRecentlyUpdated(scoped);
+  };
+
+  const clearFilter = () => setSearchParams({});
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -518,7 +571,6 @@ export default function TLABoard() {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-        
           <Button variant="outlined" onClick={() => navigate('/tla')}
             startIcon={<span className="material-symbols-outlined" style={{ fontSize: 16 }}>dashboard</span>}
             sx={{ color: TEXT_DIM, borderColor: BORDER, fontSize: 12 }}>
@@ -526,6 +578,27 @@ export default function TLABoard() {
           </Button>
         </Box>
       </Box>
+
+      {/* Active filter banner */}
+      {activeFilter && (
+        <Box sx={{
+          display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexShrink: 0,
+          px: 1.5, py: 0.75, borderRadius: 1.5,
+          bgcolor: `${ACCENT}12`, border: `1px solid ${ACCENT}33`,
+        }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 15, color: ACCENT }}>filter_alt</span>
+          <Typography sx={{ fontSize: 12, color: TEXT_BRIGHT, fontWeight: 600 }}>
+            Filtered: {FILTER_LABELS[activeFilter] ?? activeFilter}
+          </Typography>
+          <Button
+            size="small"
+            onClick={clearFilter}
+            sx={{ ml: 'auto', fontSize: 11, color: TEXT_DIM, minWidth: 0, py: 0.25 }}
+          >
+            Clear
+          </Button>
+        </Box>
+      )}
 
       {/* Stats strip */}
       <Box sx={{ display: 'flex', gap: 1, mb: 2.5, flexShrink: 0, flexWrap: 'wrap' }}>
