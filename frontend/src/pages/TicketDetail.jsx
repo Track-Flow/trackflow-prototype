@@ -41,28 +41,37 @@ function formatDateTime(dateStr) {
   return `${datePart}, ${timePart}`;
 }
 
-// ─── Note dialog (Resolve + Struggling) ───────────────────────────────────────
+// ─── Note dialog (Resolve + Struggling + Reopen) ──────────────────────────────
 function NoteDialog({ open, mode, onConfirm, onCancel }) {
   const [notes, setNotes] = useState('');
   const handleConfirm = () => { onConfirm(notes); setNotes(''); };
   const handleCancel  = () => { onCancel();        setNotes(''); };
 
-  const isResolve = mode === 'resolved';
-  const config = isResolve
-    ? {
-        icon: 'check_circle', iconColor: '#5a8f72',
-        title: 'Resolve Ticket',
-        helper: 'Add resolution notes before marking this ticket as resolved.',
-        placeholder: 'Describe how the issue was resolved…',
-        confirmLabel: 'Resolve', confirmColor: 'success', confirmIcon: 'check',
-      }
-    : {
-        icon: 'flag', iconColor: '#8b5e6a',
-        title: 'Flag as Struggling',
-        helper: "Let the team know what you're stuck on before flagging this ticket.",
-        placeholder: "What are you stuck on?",
-        confirmLabel: 'Flag as Struggling', confirmColor: 'error', confirmIcon: 'flag',
-      };
+  const configByMode = {
+    resolved: {
+      icon: 'check_circle', iconColor: '#5a8f72',
+      title: 'Resolve Ticket',
+      helper: 'Add resolution notes before marking this ticket as resolved.',
+      placeholder: 'Describe how the issue was resolved…',
+      confirmLabel: 'Resolve', confirmColor: 'success', confirmIcon: 'check',
+    },
+    struggling: {
+      icon: 'flag', iconColor: '#8b5e6a',
+      title: 'Flag as Struggling',
+      helper: "Let the team know what you're stuck on before flagging this ticket.",
+      placeholder: "What are you stuck on?",
+      confirmLabel: 'Flag as Struggling', confirmColor: 'error', confirmIcon: 'flag',
+    },
+    reopen: {
+      icon: 'restart_alt', iconColor: '#c49a4a',
+      title: 'Reopen Ticket',
+      helper: 'Explain why this ticket is being reopened. The requester will be notified.',
+      placeholder: 'Reason for reopening (e.g. issue recurred, resolution incomplete)…',
+      confirmLabel: 'Reopen', confirmColor: 'warning', confirmIcon: 'restart_alt',
+    },
+  };
+
+  const config = configByMode[mode] ?? configByMode.resolved;
 
   return (
     <Dialog open={open} onClose={handleCancel} PaperProps={{
@@ -113,53 +122,36 @@ function NoteDialog({ open, mode, onConfirm, onCancel }) {
 // ─── Lifecycle / history dialog ───────────────────────────────────────────────
 function HistoryEntry({ entry, isLast }) {
   const color = STATUS_COLORS[entry.new_status] ?? TEXT_MUTED;
-  const icon  = STATUS_ICONS[entry.new_status] ?? 'radio_button_checked';
+  const icon  = STATUS_ICONS[entry.new_status] ?? 'update';
 
   return (
-    <Box sx={{ display: 'flex', gap: 1.5 }}>
-      {/* Timeline rail */}
+    <Box sx={{ display: 'flex', gap: 1.5, position: 'relative', pb: isLast ? 0 : 2 }}>
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
         <Box sx={{
           width: 28, height: 28, borderRadius: '50%', display: 'grid', placeItems: 'center',
-          bgcolor: `${color}20`, border: `2px solid ${color}`,
+          bgcolor: `${color}20`, border: `1px solid ${color}55`,
         }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 15, color, fontVariationSettings: "'FILL' 1" }}>
-            {icon}
-          </span>
+          <span className="material-symbols-outlined" style={{ fontSize: 15, color, fontVariationSettings: "'FILL' 1" }}>{icon}</span>
         </Box>
-        {!isLast && <Box sx={{ width: '2px', flex: 1, minHeight: 20, bgcolor: BORDER, mt: 0.5 }} />}
-      </Box>
-
-      {/* Content */}
-      <Box sx={{ flex: 1, pb: 2.5, minWidth: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', mb: 0.6 }}>
-          {entry.old_status && (
-            <>
-              <Chip label={entry.old_status.replace('_', ' ')} size="small" sx={{
-                height: 20, fontSize: 10.5, fontWeight: 700, textTransform: 'capitalize',
-                bgcolor: 'rgba(148,163,184,0.12)', color: TEXT_DIM,
-              }} />
-              <span className="material-symbols-outlined" style={{ fontSize: 13, color: TEXT_MUTED }}>arrow_forward</span>
-            </>
-          )}
-          <Chip label={entry.new_status.replace('_', ' ')} size="small" sx={{
-            height: 20, fontSize: 10.5, fontWeight: 700, textTransform: 'capitalize',
-            bgcolor: `${color}25`, color, border: `1px solid ${color}`,
-          }} />
-        </Box>
-
-        {entry.note && (
-          <Box sx={{
-            display: 'inline-block', px: 1.5, py: 1, borderRadius: 1.5, mb: 0.75,
-            bgcolor: `${color}14`, borderLeft: `3px solid ${color}`,
-          }}>
-            <Typography sx={{ fontSize: 14, color: '#ffffff', lineHeight: 1.5, whiteSpace: 'pre-wrap', fontWeight: 600 }}>
-              {entry.note}
-            </Typography>
-          </Box>
+        {!isLast && (
+          <Box sx={{ flex: 1, width: 1, bgcolor: BORDER, mt: 0.5, minHeight: 24 }} />
         )}
-
-        <Typography sx={{ fontSize: 11.5, color: TEXT_DIM, display: 'block' }}>
+      </Box>
+      <Box sx={{ flex: 1, minWidth: 0, pt: 0.25 }}>
+        <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: TEXT_BRIGHT, mb: 0.25 }}>
+          {statusMeta(entry.new_status)?.label ?? entry.new_status}
+          {entry.old_status && (
+            <span style={{ color: TEXT_MUTED, fontWeight: 400, fontSize: 11, marginLeft: 6 }}>
+              from {statusMeta(entry.old_status)?.label ?? entry.old_status}
+            </span>
+          )}
+        </Typography>
+        {entry.note && (
+          <Typography sx={{ fontSize: 12, color: TEXT_DIM, lineHeight: 1.5, mb: 0.5, whiteSpace: 'pre-wrap' }}>
+            {entry.note}
+          </Typography>
+        )}
+        <Typography sx={{ fontSize: 11, color: TEXT_MUTED }}>
           {entry.changed_by_name ?? entry.changed_by} · {formatDateTime(entry.changed_at)}
         </Typography>
       </Box>
@@ -304,8 +296,13 @@ export default function TicketDetail() {
   const handleNoteConfirm = async (notes) => {
     const mode = noteDialog.mode;
     setNoteDialog({ open: false, mode: null });
+    // Reopen maps to ticket_status = 'open'; other modes send their mode directly.
+    const nextStatus = mode === 'reopen' ? 'open' : mode;
     try {
-      await api.patch(`/tickets/${id}`, { ticket_status: mode, resolution_notes: notes });
+      await api.patch(`/tickets/${id}`, {
+        ticket_status: nextStatus,
+        resolution_notes: notes,
+      });
       fetchTicket();
     } catch (err) {
       setError(err.response?.data?.error ?? 'Failed to update ticket.');
@@ -387,9 +384,15 @@ export default function TicketDetail() {
   const isClaimed       = assignedUserId != null;
   const isAssignedToMe  = assignedUserId === user?.id;
   const isTLA           = user?.role === 'tla';
+  const isManager       = user?.role === 'mss_manager';
+  const isAdmin         = user?.role === 'admin';
 
   const canClaim  = isTLA && !isClaimed && !isResolved && !isClosed;
   const canManage = isTLA && isAssignedToMe && !isResolved && !isClosed;
+  // Reopen: TLA (must be assignee), Manager, or Admin — only when resolved/closed
+  const canReopen = (isResolved || isClosed) && (
+    (isTLA && isAssignedToMe) || isManager || isAdmin
+  );
 
   return (
     <Box>
@@ -424,8 +427,8 @@ export default function TicketDetail() {
 
           {/* Header card */}
           <Card sx={{ p: 3, mb: 2, bgcolor: PAPER, border: `1px solid ${BORDER}` }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-              <Typography sx={{ fontSize: 12, fontFamily: 'monospace', color: '#5b8ec2' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5, flexWrap: 'wrap' }}>
+              <Typography sx={{ fontFamily: 'monospace', fontSize: 12, color: '#5a8dc4', fontWeight: 700 }}>
                 #{ticket.ticket_id}
               </Typography>
               <Chip label={sLabel} size="small" sx={{
@@ -436,74 +439,36 @@ export default function TicketDetail() {
                 fontSize: 11, fontWeight: 700, height: 22,
                 bgcolor: `${pColor}20`, color: pColor, border: `1px solid ${pColor}44`,
               }} />
-              {!isClaimed && !isResolved && !isClosed && (
-                <Box sx={{
-                  display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.3, borderRadius: 1,
-                  bgcolor: 'rgba(196,154,74,0.10)', border: '1px solid rgba(196,154,74,0.3)',
-                }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#c49a4a' }}>lock</span>
-                  <Typography sx={{ fontSize: 11, color: '#c49a4a', fontWeight: 700 }}>Claim first</Typography>
-                </Box>
-              )}
-              {isResolved && (
-                <Box sx={{
-                  display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.3, borderRadius: 1,
-                  bgcolor: 'rgba(90,143,114,0.10)', border: '1px solid rgba(90,143,114,0.25)',
-                }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#5a8f72' }}>lock</span>
-                  <Typography sx={{ fontSize: 11, color: '#5a8f72', fontWeight: 700 }}>Locked</Typography>
-                </Box>
-              )}
-              {isStruggling && (
-                <Box sx={{
-                  display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.3, borderRadius: 1,
-                  bgcolor: 'rgba(139,94,106,0.10)', border: '1px solid rgba(139,94,106,0.25)',
-                }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#8b5e6a' }}>flag</span>
-                  <Typography sx={{ fontSize: 11, color: '#8b5e6a', fontWeight: 700 }}>Struggling</Typography>
-                </Box>
+              {ticket.ticket_escalated === 1 && (
+                <Chip label="ESCALATED" size="small" sx={{
+                  fontSize: 10, fontWeight: 800, height: 22, letterSpacing: '0.06em',
+                  bgcolor: 'rgba(229,72,77,0.15)', color: '#e5484d', border: '1px solid rgba(229,72,77,0.4)',
+                }} />
               )}
             </Box>
-
-            <Typography variant="h5" sx={{ color: TEXT_BRIGHT, fontFamily: '"Rubik", sans-serif', mb: 0.5 }}>
+            <Typography sx={{ fontSize: 20, fontWeight: 700, color: TEXT_BRIGHT, mb: 1.5, lineHeight: 1.3 }}>
               {ticket.ticket_title}
             </Typography>
-            <Typography sx={{ fontSize: 12.5, color: TEXT_MUTED }}>
-              Submitted {timeAgo(ticket.ticket_created_at)}
-            </Typography>
-          </Card>
-
-          {/* Description */}
-          <Card sx={{ p: 3, mb: 2, bgcolor: PAPER, border: `1px solid ${BORDER}` }}>
-            <Typography sx={{
-              fontSize: 11, color: '#5a8dc4', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1.5,
-            }}>
-              Description
-            </Typography>
-            <Typography sx={{ fontSize: 14, color: TEXT_BRIGHT, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+            <Typography sx={{ fontSize: 13.5, color: TEXT_DIM, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
               {ticket.ticket_description}
             </Typography>
+
+            {ticket.resolution_note && (
+              <Box sx={{
+                mt: 2.5, p: 2, borderRadius: 1.5,
+                bgcolor: 'rgba(90,143,114,0.08)', border: '1px solid rgba(90,143,114,0.3)',
+              }}>
+                <Typography sx={{ fontSize: 10.5, fontWeight: 800, color: '#5a8f72', letterSpacing: '0.08em', mb: 0.75 }}>
+                  RESOLUTION NOTE
+                </Typography>
+                <Typography sx={{ fontSize: 13, color: TEXT_BRIGHT, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                  {ticket.resolution_note}
+                </Typography>
+              </Box>
+            )}
           </Card>
 
-          {/* Resolution / struggling notes */}
-          {(isResolved || isStruggling) && ticket.resolution_notes && (
-            <Card sx={{ p: 3, mb: 2, bgcolor: PAPER, border: `1px solid ${BORDER}` }}>
-              <Typography sx={{
-                fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1.5,
-                color: isResolved ? '#5a8f72' : '#8b5e6a',
-              }}>
-                {isResolved ? 'Resolution notes' : 'Struggling notes'}
-              </Typography>
-              <Typography sx={{
-                fontSize: 13.5, lineHeight: 1.7, whiteSpace: 'pre-wrap',
-                color: isResolved ? '#5a8f72' : '#8b5e6a', fontWeight: 500,
-              }}>
-                {ticket.resolution_notes}
-              </Typography>
-            </Card>
-          )}
-
-          {/* Claim — TLA, unclaimed */}
+          {/* Actions — Unclaimed TLA */}
           {canClaim && (
             <Card sx={{ p: 2.5, mb: 2, bgcolor: PAPER, border: `1px solid ${BORDER}` }}>
               <Typography sx={{
@@ -512,9 +477,9 @@ export default function TicketDetail() {
                 Actions
               </Typography>
               <Button
-                variant="contained" size="small"
-                disabled={claiming}
+                variant="contained"
                 onClick={handleClaim}
+                disabled={claiming}
                 startIcon={
                   claiming
                     ? <CircularProgress size={13} sx={{ color: '#0a1628' }} />
@@ -565,6 +530,32 @@ export default function TicketDetail() {
                   Resolve
                 </Button>
               </Box>
+            </Card>
+          )}
+
+          {/* Actions — Reopen (TLA-assignee, Manager, Admin on resolved/closed) */}
+          {canReopen && (
+            <Card sx={{ p: 2.5, mb: 2, bgcolor: PAPER, border: '1px solid rgba(196,154,74,0.35)' }}>
+              <Typography sx={{
+                fontSize: 11, color: TEXT_MUTED, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1,
+              }}>
+                Actions
+              </Typography>
+              <Typography sx={{ fontSize: 12.5, color: TEXT_DIM, mb: 1.5, lineHeight: 1.5 }}>
+                This ticket is {isClosed ? 'closed' : 'resolved'}. You can reopen it if the issue has recurred or the resolution was incomplete.
+              </Typography>
+              <Button
+                variant="contained"
+                onClick={() => setNoteDialog({ open: true, mode: 'reopen' })}
+                startIcon={<span className="material-symbols-outlined" style={{ fontSize: 15 }}>restart_alt</span>}
+                sx={{
+                  fontSize: 12, fontWeight: 700,
+                  bgcolor: '#c49a4a', color: '#0a1628',
+                  '&:hover': { bgcolor: '#b88a3a' },
+                }}
+              >
+                Reopen ticket
+              </Button>
             </Card>
           )}
 

@@ -17,6 +17,10 @@ const BORDER      = 'rgba(148,163,184,0.10)';
 const STRUGGLING  = '#e5484d'; // bright red
 const MINE        = '#2bb3a3'; // teal — tickets assigned to me
 
+// TEST MODE — frontend fully owns auto-close.
+// Set back to 24*60*60*1000 (or higher) for production.
+const AUTO_CLOSE_MS = 3 * 1000;
+
 const COLUMNS = [
   { key: 'open',        label: 'Open',        color: '#5a8dc4', icon: 'inbox'           },
   { key: 'in_progress', label: 'In Progress', color: '#c49a4a', icon: 'pending_actions' },
@@ -164,28 +168,52 @@ function ClaimFirstBadge() {
   );
 }
 
-// ─── "Closes in Xh Ym" badge ──────────────────────────────────────────────────
+// ─── "Closes in Xs" badge — TEST MODE, frontend-driven auto-close ─────────────
 function computeLabel(resolvedAt) {
   if (!resolvedAt) return null;
-  const closeAt   = new Date(resolvedAt).getTime() + 24 * 60 * 60 * 1000;
+  const closeAt   = new Date(resolvedAt).getTime() + AUTO_CLOSE_MS;
   const remaining = closeAt - Date.now();
-  if (remaining <= 0) return 'Closing soon';
-  const totalMin  = Math.floor(remaining / 60000);
-  const h         = Math.floor(totalMin / 60);
-  const m         = totalMin % 60;
-  return h > 0 ? `Closes in ${h}h ${m}m` : `Closes in ${m}m`;
+  if (remaining <= 0) return 'Closing…';
+  const secs = Math.max(1, Math.ceil(remaining / 1000));
+  return `Closes in ${secs}s`;
 }
 
-function ClosesInBadge({ resolvedAt }) {
+function ClosesInBadge({ ticketId, resolvedAt, onAutoClosed }) {
   const [label, setLabel] = useState(() => computeLabel(resolvedAt));
+  const firedRef = useRef(false);
+
   useEffect(() => {
+    firedRef.current = false;
     setLabel(computeLabel(resolvedAt));
-    const id = setInterval(() => setLabel(computeLabel(resolvedAt)), 60_000);
+
+    const tick = async () => {
+      setLabel(computeLabel(resolvedAt));
+      if (!resolvedAt || firedRef.current) return;
+      const closeAt = new Date(resolvedAt).getTime() + AUTO_CLOSE_MS;
+      if (Date.now() >= closeAt) {
+        firedRef.current = true;
+        try {
+          await api.patch(`/tickets/${ticketId}`, {
+            ticket_status: 'closed',
+            resolution_notes: `Auto-closed by frontend timer (${AUTO_CLOSE_MS / 1000}s after resolution)`,
+          });
+        } catch (err) {
+          console.error('Auto-close failed for ticket', ticketId, err);
+          // allow another retry on next tick
+          firedRef.current = false;
+          return;
+        }
+        onAutoClosed?.(ticketId);
+      }
+    };
+
+    const id = setInterval(tick, 500);
     return () => clearInterval(id);
-  }, [resolvedAt]);
+  }, [resolvedAt, ticketId, onAutoClosed]);
+
   if (!label) return null;
   return (
-    <Tooltip title="Auto-closes 24 hours after resolution" arrow>
+    <Tooltip title={`Auto-closes ${AUTO_CLOSE_MS / 1000}s after resolution (test mode)`} arrow>
       <Box sx={{
         display: 'inline-flex', alignItems: 'center', gap: 0.4,
         px: 0.8, py: 0.2, borderRadius: 1,
@@ -200,7 +228,7 @@ function ClosesInBadge({ resolvedAt }) {
 }
 
 // ─── Ticket Card ──────────────────────────────────────────────────────────────
-function TicketCard({ ticket, onDragStart, onClick, onClaim, isDragging, isClaiming, userId }) {
+function TicketCard({ ticket, onDragStart, onClick, onClaim, onAutoClosed, isDragging, isClaiming, userId }) {
   const { isClaimed, isOwned, isOtherOwned, isClosed, isResolved, draggable } = cardLockState(ticket, userId);
   const isStruggling  = ticket.ticket_status === 'struggling';
   const priorityColor = getPriorityColor(ticket.ticket_priority);
@@ -274,88 +302,81 @@ function TicketCard({ ticket, onDragStart, onClick, onClaim, isDragging, isClaim
               <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#475569', fontVariationSettings: "'FILL' 1" }}>lock</span>
             </Tooltip>
           ) : isResolved ? (
-            <ClosesInBadge resolvedAt={ticket.resolved_at} />
+            <ClosesInBadge ticketId={ticket.ticket_id} resolvedAt={ticket.resolved_at} onAutoClosed={onAutoClosed} />
           ) : !isClaimed ? (
             <ClaimFirstBadge />
           ) : isOtherOwned ? (
-            <Tooltip title="Claimed by someone else" arrow>
-              <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#64748b', fontVariationSettings: "'FILL' 1" }}>lock</span>
+            <Tooltip title={assigneeName} arrow>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Avatar sx={{ width: 22, height: 22, fontSize: 9, fontWeight: 700, bgcolor: isOwned ? `${MINE}25` : `${ACCENT}25`, color: isOwned ? MINE : ACCENT }}>
+                  {assigneeInitials}
+                </Avatar>
+                <Typography sx={{ fontSize: 10, color: isOwned ? MINE : '#5b8ec2', fontWeight: 600 }}>
+                  {assigneeFirst}
+                </Typography>
+              </Box>
             </Tooltip>
-          ) : null}
-          {isStruggling && (
-            <Tooltip title="Flagged as struggling" arrow>
-              <span className="material-symbols-outlined" style={{ fontSize: 13, color: STRUGGLING, fontVariationSettings: "'FILL' 1" }}>flag</span>
-            </Tooltip>
+          ) : (
+            <Button
+              size="small"
+              disabled={isClaiming}
+              onClick={e => { e.stopPropagation(); onClaim(ticket.ticket_id); }}
+              startIcon={
+                isClaiming
+                  ? <CircularProgress size={11} sx={{ color: '#c49a4a' }} />
+                  : <span className="material-symbols-outlined" style={{ fontSize: 12 }}>person_add</span>
+              }
+              sx={{
+                fontSize: 10.5, py: 0.3, px: 1, minWidth: 0, lineHeight: 1.4,
+                color: '#c49a4a', bgcolor: 'rgba(196,154,74,0.12)',
+                border: '1px solid rgba(196,154,74,0.4)',
+                '&:hover': { bgcolor: 'rgba(196,154,74,0.22)', borderColor: '#c49a4a' },
+              }}
+            >
+              {isClaiming ? 'Claiming…' : 'Claim'}
+            </Button>
           )}
-          {ticket.ticket_priority && (
-            <Box sx={{
-              px: 0.75, py: 0.1, borderRadius: 0.75, fontSize: 9.5, fontWeight: 700,
-              bgcolor: `${priorityColor}20`, color: priorityColor, border: `1px solid ${priorityColor}44`,
-            }}>
-              {ticket.ticket_priority.toUpperCase()}
-            </Box>
-          )}
+          <Typography sx={{ fontSize: 10.5, color: '#3a4f6a' }}>
+            {timeAgo(ticket.ticket_updated_at ?? ticket.ticket_created_at)}
+          </Typography>
         </Box>
       </Box>
 
-      {/* Title */}
-      <Typography sx={{
-        fontSize: 13, fontWeight: 600, color: TEXT_BRIGHT, lineHeight: 1.4, mb: 1.25, pl: 0.5,
-        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-      }}>
-        {ticket.ticket_title}
-      </Typography>
-
-      {/* Department chip */}
-      {ticket.department_name && (
-        <Box sx={{ pl: 0.5, mb: 1.25 }}>
-          <Box sx={{
-            display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 0.75, py: 0.2, borderRadius: 0.75,
-            fontSize: 10, fontWeight: 600,
-            bgcolor: 'rgba(90,141,196,0.10)', color: '#5a8dc4', border: '1px solid rgba(90,141,196,0.22)',
-          }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 10 }}>corporate_fare</span>
-            {ticket.department_name}
-          </Box>
-        </Box>
-      )}
-
-      {/* Footer */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pl: 0.5 }}>
-        {isClaimed ? (
-          <Tooltip title={assigneeName} arrow>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <Avatar sx={{ width: 22, height: 22, fontSize: 9, fontWeight: 700, bgcolor: isOwned ? `${MINE}25` : `${ACCENT}25`, color: isOwned ? MINE : ACCENT }}>
-                {assigneeInitials}
-              </Avatar>
-              <Typography sx={{ fontSize: 10, color: isOwned ? MINE : '#5b8ec2', fontWeight: 600 }}>
-                {assigneeFirst}
-              </Typography>
-            </Box>
-          </Tooltip>
-        ) : (
-          <Button
-            size="small"
-            disabled={isClaiming}
-            onClick={e => { e.stopPropagation(); onClaim(ticket.ticket_id); }}
-            startIcon={
-              isClaiming
-                ? <CircularProgress size={11} sx={{ color: '#c49a4a' }} />
-                : <span className="material-symbols-outlined" style={{ fontSize: 12 }}>person_add</span>
-            }
-            sx={{
-              fontSize: 10.5, py: 0.3, px: 1, minWidth: 0, lineHeight: 1.4,
-              color: '#c49a4a', bgcolor: 'rgba(196,154,74,0.12)',
-              border: '1px solid rgba(196,154,74,0.4)',
-              '&:hover': { bgcolor: 'rgba(196,154,74,0.22)', borderColor: '#c49a4a' },
-            }}
-          >
-            {isClaiming ? 'Claiming…' : 'Claim'}
-          </Button>
-        )}
-        <Typography sx={{ fontSize: 10.5, color: '#3a4f6a' }}>
-          {timeAgo(ticket.ticket_updated_at ?? ticket.ticket_created_at)}
+      {/* Title + description */}
+      <Box sx={{ pl: 0.5, mb: 1 }}>
+        <Typography sx={{
+          fontSize: 12.5, fontWeight: 600, color: TEXT_BRIGHT, mb: 0.5,
+          overflow: 'hidden', textOverflow: 'ellipsis',
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+        }}>
+          {ticket.ticket_title}
         </Typography>
+        <Typography sx={{
+          fontSize: 11, color: TEXT_DIM, lineHeight: 1.4,
+          overflow: 'hidden', textOverflow: 'ellipsis',
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+        }}>
+          {ticket.ticket_description}
+        </Typography>
+      </Box>
+
+      {/* Footer — priority + category */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, pl: 0.5, flexWrap: 'wrap' }}>
+        <Box sx={{
+          display: 'inline-flex', alignItems: 'center', gap: 0.4,
+          px: 0.75, py: 0.15, borderRadius: 0.75,
+          bgcolor: `${priorityColor}18`, border: `1px solid ${priorityColor}44`,
+        }}>
+          <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: priorityColor }} />
+          <Typography sx={{ fontSize: 9.5, fontWeight: 700, color: priorityColor, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            {priorityMeta(ticket.ticket_priority)?.label ?? ticket.ticket_priority}
+          </Typography>
+        </Box>
+        {ticket.category_name && (
+          <Typography sx={{ fontSize: 10, color: TEXT_DIM }}>
+            {ticket.category_name}
+          </Typography>
+        )}
       </Box>
 
       {/* Escalated dot */}
@@ -370,7 +391,7 @@ function TicketCard({ ticket, onDragStart, onClick, onClaim, isDragging, isClaim
 }
 
 // ─── Column ───────────────────────────────────────────────────────────────────
-function KanbanColumn({ col, tickets, draggingId, claimingId, onDragStart, onDrop, onCardClick, onClaim, userId }) {
+function KanbanColumn({ col, tickets, draggingId, claimingId, onDragStart, onDrop, onCardClick, onClaim, onAutoClosed, userId }) {
   const [isOver, setIsOver] = useState(false);
   const isClosed = col.key === 'closed';
 
@@ -409,7 +430,7 @@ function KanbanColumn({ col, tickets, draggingId, claimingId, onDragStart, onDro
         {tickets.length === 0 && (
           <Box sx={{ p: 2, textAlign: 'center', borderRadius: 1.5, border: `1px dashed ${BORDER}`, mt: 0.5 }}>
             <Typography sx={{ fontSize: 12, color: '#3a4f6a' }}>
-              {isClosed ? 'Closes 24h after resolution' : 'No tickets'}
+              {isClosed ? `Closes ${AUTO_CLOSE_MS / 1000}s after resolution` : 'No tickets'}
             </Typography>
           </Box>
         )}
@@ -423,6 +444,7 @@ function KanbanColumn({ col, tickets, draggingId, claimingId, onDragStart, onDro
             onDragStart={onDragStart}
             onClick={onCardClick}
             onClaim={onClaim}
+            onAutoClosed={onAutoClosed}
           />
         ))}
       </Box>
@@ -550,6 +572,17 @@ export default function TLABoard() {
     await performUpdate(ticket, mode, notes);
   };
 
+  // Called by ClosesInBadge when a ticket auto-closes on the client.
+  // Refresh from server so status + audit log are picked up everywhere.
+  const handleAutoClosed = (ticketId) => {
+    setTickets(prev =>
+      prev.map(t => t.ticket_id === ticketId
+        ? { ...t, ticket_status: 'closed' }
+        : t)
+    );
+    fetchTickets();
+  };
+
   const ticketsByCol = col => {
     const scoped = applyFilter(tickets, activeFilter).filter(t => t.ticket_status === col);
     return col === 'open' ? sortByOldestFirst(scoped) : sortByMostRecentlyUpdated(scoped);
@@ -643,6 +676,7 @@ export default function TLABoard() {
               onDrop={handleDrop}
               onCardClick={id => navigate(`/tickets/${id}`)}
               onClaim={handleClaim}
+              onAutoClosed={handleAutoClosed}
             />
           ))}
         </Box>
@@ -650,7 +684,7 @@ export default function TLABoard() {
 
       {!loading && (
         <Typography sx={{ fontSize: 11, color: '#3a4f6a', textAlign: 'center', mt: 1.5, flexShrink: 0 }}>
-          Claim a ticket, then drag it between columns · Closed tickets auto-close 24h after resolution
+          Claim a ticket, then drag it between columns · Closed tickets auto-close {AUTO_CLOSE_MS / 1000}s after resolution (test mode)
         </Typography>
       )}
 
