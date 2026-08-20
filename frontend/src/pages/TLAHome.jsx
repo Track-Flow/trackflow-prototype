@@ -6,7 +6,7 @@ import {
   CircularProgress, Alert,
 } from '@mui/material';
 import api from '../helpers/api';
-import { statusMeta, priorityMeta, timeAgo, getUnassigned, getSLABreaches } from '../helpers/ticketHelpers';
+import { statusMeta, priorityMeta,timeAgo, getUnassigned, getSLABreaches } from '../helpers/ticketHelpers';
 
 // ─── Theme tokens (prototype palette) ─────────────────────────────────────────
 const ACCENT      = '#5a8dc4';
@@ -71,7 +71,6 @@ function KpiCard({ label, value, color, sub, onClick }) {
 function TicketRow({ ticket }) {
   const navigate = useNavigate();
   const s = statusMeta(ticket.ticket_status);
-  const p = priorityMeta(ticket.ticket_priority ?? 'low');
 
   const assignedUserId = ticket.assigned_user_id ?? ticket.assignee_id;
   const isClaimed       = assignedUserId != null;
@@ -87,8 +86,6 @@ function TicketRow({ ticket }) {
         '&:last-child': { borderBottom: 'none' },
       }}
     >
-      {/* Priority bar */}
-      <Box sx={{ width: 3, alignSelf: 'stretch', borderRadius: 999, bgcolor: p.color, flexShrink: 0 }} />
 
       {/* Info */}
       <Box sx={{ flex: 1, minWidth: 0 }}>

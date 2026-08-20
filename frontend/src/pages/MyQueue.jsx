@@ -6,7 +6,7 @@ import {
   CircularProgress, Alert, useTheme, useMediaQuery,
 } from '@mui/material';
 import api from '../helpers/api';
-import { statusMeta, priorityMeta, timeAgo } from '../helpers/ticketHelpers';
+import { statusMeta, timeAgo } from '../helpers/ticketHelpers';
 
 const ACCENT      = '#5a8dc4';
 const PAPER       = '#111d2e';
@@ -35,12 +35,12 @@ function TableHeader() {
   return (
     <Box sx={{
       display: 'grid',
-      gridTemplateColumns: '90px 1fr 130px 110px 100px',
+      gridTemplateColumns: '90px 1fr 110px 100px',
       gap: 2, px: 2.5, py: 1.25,
       borderBottom: `1px solid ${BORDER}`,
       bgcolor: 'rgba(255,255,255,0.02)',
     }}>
-      {['Ticket', 'Subject', 'Priority', 'Status', 'Updated'].map(h => (
+      {['Ticket', 'Subject', 'Status', 'Updated'].map(h => (
         <Typography key={h} sx={{
           fontSize: 10.5, fontWeight: 700, color: TEXT_MUTED,
           textTransform: 'uppercase', letterSpacing: '0.09em',
@@ -55,11 +55,10 @@ function TableHeader() {
 // ─── Table row (desktop) ──────────────────────────────────────────────────────
 function TableRow({ ticket, onClick }) {
   const s = statusMeta(ticket.ticket_status);
-  const p = priorityMeta(ticket.ticket_priority ?? 'low');
 
   return (
     <Box onClick={onClick} sx={{
-      display: 'grid', gridTemplateColumns: '90px 1fr 130px 110px 100px',
+      display: 'grid', gridTemplateColumns: '90px 1fr 110px 100px',
       alignItems: 'center', gap: 2, px: 2.5, py: 1.75,
       borderBottom: `1px solid ${BORDER}`, cursor: 'pointer',
       '&:hover': { bgcolor: 'rgba(90,141,196,0.05)' },
@@ -71,13 +70,6 @@ function TableRow({ ticket, onClick }) {
       <Typography sx={{ fontSize: 13.5, fontWeight: 600, color: TEXT_BRIGHT }} noWrap>
         {ticket.ticket_title}
       </Typography>
-      <Box sx={{
-        display: 'inline-block', px: 1, py: 0.3, borderRadius: 1, width: 'fit-content',
-        fontSize: 10, fontWeight: 700,
-        bgcolor: `${p.color}18`, color: p.color, border: `1px solid ${p.color}44`,
-      }}>
-        {p.label.toUpperCase()}
-      </Box>
       <Box sx={{
         display: 'inline-block', px: 1.25, py: 0.35, borderRadius: 1, width: 'fit-content',
         fontSize: 10.5, fontWeight: 700,
@@ -95,7 +87,6 @@ function TableRow({ ticket, onClick }) {
 // ─── Mobile card ──────────────────────────────────────────────────────────────
 function MobileCard({ ticket, onClick }) {
   const s = statusMeta(ticket.ticket_status);
-  const p = priorityMeta(ticket.ticket_priority ?? 'low');
 
   return (
     <Box onClick={onClick} sx={{
@@ -107,19 +98,11 @@ function MobileCard({ ticket, onClick }) {
         <Typography sx={{ fontFamily: 'monospace', fontSize: 11.5, color: ACCENT, fontWeight: 600 }}>
           #{ticket.ticket_id}
         </Typography>
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <Box sx={{
-            px: 0.9, py: 0.2, borderRadius: 1, fontSize: 9.5, fontWeight: 700,
-            bgcolor: `${p.color}18`, color: p.color, border: `1px solid ${p.color}33`,
-          }}>
-            {p.label.toUpperCase()}
-          </Box>
-          <Box sx={{
-            px: 0.9, py: 0.2, borderRadius: 1, fontSize: 9.5, fontWeight: 700,
-            bgcolor: `${s.color}18`, color: s.color, border: `1px solid ${s.color}33`,
-          }}>
-            {s.label.toUpperCase()}
-          </Box>
+        <Box sx={{
+          px: 0.9, py: 0.2, borderRadius: 1, fontSize: 9.5, fontWeight: 700,
+          bgcolor: `${s.color}18`, color: s.color, border: `1px solid ${s.color}33`,
+        }}>
+          {s.label.toUpperCase()}
         </Box>
       </Box>
       <Typography sx={{ fontSize: 13.5, fontWeight: 600, color: TEXT_BRIGHT, mb: 0.5 }}>

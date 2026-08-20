@@ -8,6 +8,7 @@ import TLAHome      from './pages/TLAHome';
 import ManagerHome  from './pages/ManagerHome';
 import EndUserHome  from './pages/EndUserHome';
 import HelpdeskHome from './pages/HelpdeskHome';
+import HelpdeskAllTickets from './pages/HelpDeskAllTickets';
 import AccessManagement from './pages/AccessManagement';
 import Stub         from './pages/Stub';
 import SubmitTicket  from './pages/SubmitTicket';
@@ -88,7 +89,7 @@ export default function App() {
 
           {/* Help Desk */}
           <Route path="/helpdesk"         element={<PrivateRoute roles={['admin']}><HelpdeskHome /></PrivateRoute>} />
-          <Route path="/helpdesk/tickets" element={<PrivateRoute roles={['admin']}><Stub title="All tickets" icon="confirmation_number" /></PrivateRoute>} />
+          <Route path="/helpdesk/tickets" element={<PrivateRoute roles={['admin']}><HelpdeskAllTickets /></PrivateRoute>} />
           <Route path="/helpdesk/users" element={<PrivateRoute roles={['admin']}><AccessManagement /></PrivateRoute>} />
 
           <Route path="/helpdesk/cats"    element={<PrivateRoute roles={['admin']}><Stub title="Categories" icon="category" /></PrivateRoute>} />

@@ -305,7 +305,7 @@ function TicketCard({ ticket, onDragStart, onClick, onClaim, onAutoClosed, isDra
             <ClosesInBadge ticketId={ticket.ticket_id} resolvedAt={ticket.resolved_at} onAutoClosed={onAutoClosed} />
           ) : !isClaimed ? (
             <ClaimFirstBadge />
-          ) : isOtherOwned ? (
+          ) :   (isOtherOwned || isOwned) ? (
             <Tooltip title={assigneeName} arrow>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Avatar sx={{ width: 22, height: 22, fontSize: 9, fontWeight: 700, bgcolor: isOwned ? `${MINE}25` : `${ACCENT}25`, color: isOwned ? MINE : ACCENT }}>

@@ -181,6 +181,105 @@ router.post("/check-duplicate", authenticateToken, async (req, res) => {
   }
 });
 
+// ─── POST /api/tickets/:id/reopen ─────────────────────────────────────────────
+// Dedicated reopen route. Only TLA (must be the current assignee),
+// mss_manager, or admin can reopen. Only valid from resolved/closed.
+// Requires a non-empty `reason`. Keeps the existing assignee.
+router.post("/:id/reopen", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  const requesting_user_id   = req.user.id;
+  const requesting_user_role = req.user.role;
+
+  if (!reason || !reason.trim()) {
+    return res.status(400).json({ error: "A reason is required to reopen a ticket." });
+  }
+
+  if (!["tla", "mss_manager", "admin"].includes(requesting_user_role)) {
+    return res.status(403).json({ error: "Not authorised to reopen tickets." });
+  }
+
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const [tickets] = await conn.query(
+      "SELECT * FROM ticket WHERE ticket_id = ?",
+      [id]
+    );
+    if (tickets.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: "Ticket not found." });
+    }
+
+    const ticket = tickets[0];
+    const oldStatus = ticket.ticket_status;
+
+    if (!["resolved", "closed"].includes(oldStatus)) {
+      await conn.rollback();
+      return res.status(409).json({ error: "Only resolved or closed tickets can be reopened." });
+    }
+
+    // TLA can only reopen tickets they were assigned to
+    if (requesting_user_role === "tla" && ticket.assigned_user_id !== requesting_user_id) {
+      await conn.rollback();
+      return res.status(403).json({ error: "You can only reopen tickets assigned to you." });
+    }
+
+    // Keep the existing assignee — just flip status and clear resolved_at
+    await conn.query(
+      `UPDATE ticket
+       SET ticket_status = 'open',
+           resolved_at = NULL,
+           resolution_note = ?,
+           ticket_updated_at = NOW()
+       WHERE ticket_id = ?`,
+      [reason.trim(), id]
+    );
+
+    await conn.query(
+      `INSERT INTO ticket_status_log (ticket_id, old_status, new_status, changed_by, note)
+       VALUES (?, ?, 'open', ?, ?)`,
+      [id, oldStatus, requesting_user_id, `Reopened by ${requesting_user_id}: ${reason.trim()}`]
+    );
+
+    const [updatedRows] = await conn.query(
+      `SELECT
+        t.*,
+        u.user_name,
+        d.department_name,
+        c.category_name,
+        a.user_name AS assignee_name,
+        a.user_id   AS assignee_id
+       FROM ticket t
+       LEFT JOIN user       u ON t.user_id         = u.user_id
+       LEFT JOIN department d ON t.department_id    = d.department_id
+       LEFT JOIN category   c ON t.category_id      = c.category_id
+       LEFT JOIN user       a ON t.assigned_user_id = a.user_id
+       WHERE t.ticket_id = ?`,
+      [id]
+    );
+
+    await conn.commit();
+    return res.status(200).json({
+      message: "Ticket reopened successfully.",
+      ticket: updatedRows[0],
+    });
+  } catch (err) {
+    if (conn) {
+      try { await conn.rollback(); } catch (rollbackErr) {
+        console.error("Rollback failed:", rollbackErr);
+      }
+    }
+    console.error("Reopen ticket error:", err);
+    return res.status(500).json({ error: "Internal server error." });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
 // Patch /api/tickets/:id
 router.patch("/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;

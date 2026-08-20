@@ -21,9 +21,18 @@ const TEXT_BRIGHT = '#e3e8f0';
 const DEPT_COLORS = ['#5a8dc4', '#c49a4a', '#7a6fa8', '#5a8f72', '#8b5e6a'];
 
 // ─── KPI card ─────────────────────────────────────────────────────────────────
-function KpiCard({ label, value, color, icon, sub }) {
+function KpiCard({ label, value, color, icon, sub, onClick }) {
   return (
-    <Card sx={{ flex: '1 1 130px', p: { xs: 1.75, md: 2.5 }, bgcolor: PAPER, border: `1px solid ${BORDER}`, borderTop: `3px solid ${color}` }}>
+    <Card
+      onClick={onClick}
+      sx={{
+        flex: '1 1 130px', p: { xs: 1.75, md: 2.5 }, bgcolor: PAPER, border: `1px solid ${BORDER}`,
+        borderTop: `3px solid ${color}`,
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'all .15s',
+        '&:hover': onClick ? { borderColor: `${color}66`, transform: 'translateY(-1px)', boxShadow: '0 4px 16px rgba(0,0,0,0.25)' } : {},
+      }}
+    >
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.75 }}>
         <Typography sx={{ fontSize: 10.5, color: TEXT_DIM, fontWeight: 600, letterSpacing: '0.09em', textTransform: 'uppercase' }}>
           {label}
@@ -145,6 +154,9 @@ export default function ManagerHome() {
     ...d, color: DEPT_COLORS[i % DEPT_COLORS.length],
   }));
 
+  // KPI cards that filter status navigate to /manager/tickets?status=<key>
+  const goToStatus = (status) => navigate(`/manager/tickets?status=${status}`);
+
   return (
     <Box>
       <Box sx={{ mb: 2.5 }}>
@@ -160,10 +172,14 @@ export default function ManagerHome() {
 
       {/* KPIs */}
       <Box sx={{ display: 'flex', gap: { xs: 1.5, md: 2 }, mb: 3, flexWrap: 'wrap' }}>
-        <KpiCard label="Open"           value={counts.open ?? 0}        color="#5a8dc4" icon="radio_button_unchecked" />
-        <KpiCard label="In Progress"    value={counts.in_progress ?? 0} color="#c49a4a" icon="pending" />
-        <KpiCard label="Struggling"     value={counts.struggling ?? 0}  color="#8b5e6a" icon="flag" />
-        <KpiCard label="Resolved today" value={resolvedToday.length}    color="#5a8f72" icon="check_circle" />
+        <KpiCard label="Open"           value={counts.open ?? 0}        color="#5a8dc4" icon="radio_button_unchecked"
+          onClick={() => goToStatus('open')} />
+        <KpiCard label="In Progress"    value={counts.in_progress ?? 0} color="#c49a4a" icon="pending"
+          onClick={() => goToStatus('in_progress')} />
+        <KpiCard label="Struggling"     value={counts.struggling ?? 0}  color="#8b5e6a" icon="flag"
+          onClick={() => goToStatus('struggling')} />
+        <KpiCard label="Resolved today" value={resolvedToday.length}    color="#5a8f72" icon="check_circle"
+          onClick={() => goToStatus('resolved')} />
         <KpiCard label="SLA Breaches"   value={breaches.length}         color="#b85c52" icon="warning"
           sub={breaches.length > 0 ? 'Needs attention' : 'All on track'} />
         <KpiCard label="Unrouted"       value={unrouted.length}         color="#7a6fa8" icon="alt_route" sub="Pending help desk" />

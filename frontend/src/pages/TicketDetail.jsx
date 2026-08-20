@@ -7,7 +7,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import api from '../helpers/api';
-import { statusMeta, priorityMeta, timeAgo } from '../helpers/ticketHelpers';
+import { statusMeta, timeAgo } from '../helpers/ticketHelpers';
 
 const PAPER      = '#111d2e';
 const BORDER     = 'rgba(148,163,184,0.10)';
@@ -293,21 +293,20 @@ export default function TicketDetail() {
     }
   };
 
-  const handleNoteConfirm = async (notes) => {
-    const mode = noteDialog.mode;
-    setNoteDialog({ open: false, mode: null });
-    // Reopen maps to ticket_status = 'open'; other modes send their mode directly.
-    const nextStatus = mode === 'reopen' ? 'open' : mode;
-    try {
-      await api.patch(`/tickets/${id}`, {
-        ticket_status: nextStatus,
-        resolution_notes: notes,
-      });
-      fetchTicket();
-    } catch (err) {
-      setError(err.response?.data?.error ?? 'Failed to update ticket.');
+ const handleNoteConfirm = async (notes) => {
+  const mode = noteDialog.mode;
+  setNoteDialog({ open: false, mode: null });
+  try {
+    if (mode === 'reopen') {
+      await api.post(`/tickets/${id}/reopen`, { reason: notes });
+    } else {
+      await api.patch(`/tickets/${id}`, { ticket_status: mode, resolution_notes: notes });
     }
-  };
+    fetchTicket();
+  } catch (err) {
+    setError(err.response?.data?.error ?? 'Failed to update ticket.');
+  }
+};
 
   const patchStatus = async (newStatus) => {
     try {
@@ -371,7 +370,6 @@ export default function TicketDetail() {
   if (!ticket) return null;
 
   const { label: sLabel, color: sColor } = statusMeta(ticket.ticket_status);
-  const { label: pLabel, color: pColor } = priorityMeta(ticket.ticket_priority ?? 'low');
 
   const assignedUserId  = ticket.assigned_user_id ?? ticket.assignee_id;
   const assigneeName    = ticket.assignee_name;
@@ -435,10 +433,7 @@ export default function TicketDetail() {
                 fontSize: 11, fontWeight: 700, height: 22,
                 bgcolor: `${sColor}20`, color: sColor, border: `1px solid ${sColor}44`,
               }} />
-              <Chip label={pLabel} size="small" sx={{
-                fontSize: 11, fontWeight: 700, height: 22,
-                bgcolor: `${pColor}20`, color: pColor, border: `1px solid ${pColor}44`,
-              }} />
+             
               {ticket.ticket_escalated === 1 && (
                 <Chip label="ESCALATED" size="small" sx={{
                   fontSize: 10, fontWeight: 800, height: 22, letterSpacing: '0.06em',
@@ -619,12 +614,7 @@ export default function TicketDetail() {
                 bgcolor: `${sColor}20`, color: sColor, border: `1px solid ${sColor}44`,
               }} />
             </InfoRow>
-            <InfoRow label="Priority">
-              <Chip label={pLabel} size="small" sx={{
-                fontSize: 11, fontWeight: 700, height: 22,
-                bgcolor: `${pColor}20`, color: pColor, border: `1px solid ${pColor}44`,
-              }} />
-            </InfoRow>
+            
             <InfoRow label="Category">
               <Typography sx={{ fontSize: 12.5, color: TEXT_BRIGHT, fontWeight: 600 }}>
                 {ticket.category_name ?? ticket.category_id ?? '—'}
