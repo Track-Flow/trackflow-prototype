@@ -6,6 +6,7 @@ import {
   IconButton, Avatar, Divider, Tooltip,
   useMediaQuery, useTheme,
 } from '@mui/material';
+import NotificationBell from './NotificationBell';
 
 export const DRAWER_W = 240;
 export const TOPBAR_H = 56;
@@ -48,6 +49,13 @@ export const ROLE_PROFILE = {
   admin:       '/helpdesk/profile',
 };
 
+export const ROLE_INBOX = {
+  end_user:    '/home/inbox',
+  tla:         '/tla/inbox',
+  mss_manager: '/manager/inbox',
+  admin:       '/helpdesk/inbox',
+};
+
 const NAV = {
   tla: [
     { group: 'Workspace' },
@@ -66,6 +74,8 @@ const NAV = {
     { icon: 'download',            label: 'Export Reports',  path: '/manager/exports' },
     { group: 'Team' },
     { icon: 'badge',               label: 'TLAs',            path: '/manager/tlas'    },
+    { group: 'Account' },
+    { icon: 'inbox',               label: 'Inbox',           path: '/manager/inbox'   },
   ],
   end_user: [
     { group: 'Support' },
@@ -84,20 +94,22 @@ const NAV = {
     { group: 'Config' },
     { icon: 'category',            label: 'Categories',     path: '/helpdesk/cats'    },
     { icon: 'shield',              label: 'Audit log',      path: '/helpdesk/audit'   },
+    { group: 'Account' },
+    { icon: 'inbox',               label: 'Inbox',          path: '/helpdesk/inbox'   },
   ],
 };
 
 const PAGE_TITLES = {
   '/home': 'Home', '/submit': 'Submit ticket', '/home/tickets': 'My tickets',
   '/home/inbox': 'Notifications', '/home/profile': 'Profile',
-  '/tla': 'Dashboard', '/tla/board': 'Board', '/tla/queue': 'My queue', '/tla/inbox': 'Inbox',
+  '/tla': 'Dashboard', '/tla/board': 'Board', '/tla/queue': 'My queue', '/tla/inbox': 'Notifications',
   '/tla/profile': 'Profile',
   '/manager': 'Overview', '/manager/tickets': 'All tickets', '/manager/depts': 'Departments',
   '/manager/reports': 'Reports', '/manager/exports': 'Export Reports', '/manager/tlas': 'TLAs',
-  '/manager/profile': 'Profile',
+  '/manager/profile': 'Profile', '/manager/inbox': 'Notifications',
   '/helpdesk': 'Unrouted queue', '/helpdesk/tickets': 'All tickets',
   '/helpdesk/users': 'User access', '/helpdesk/cats': 'Categories', '/helpdesk/audit': 'Audit log',
-  '/helpdesk/profile': 'Profile',
+  '/helpdesk/profile': 'Profile', '/helpdesk/inbox': 'Notifications',
 };
 
 function getInitials(name) {
@@ -233,7 +245,7 @@ function SidebarContent({ role, accent, user, onNavClick, onLogout }) {
 
 // ─── Topbar ───────────────────────────────────────────────────────────────────
 
-function Topbar({ title, onMenuOpen }) {
+function Topbar({ title, onMenuOpen, inboxPath }) {
   const theme    = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -261,11 +273,8 @@ function Topbar({ title, onMenuOpen }) {
           <Typography sx={{ fontSize: 12.5, fontWeight: 600, color: TEXT_BRIGHT }} noWrap>{title}</Typography>
         </Box>
 
-       
+        <NotificationBell inboxPath={inboxPath} />
 
-        <IconButton size="small" sx={{ color: TEXT_MUTED, '&:hover': { color: TEXT_DIM }, display: { xs: 'none', sm: 'inline-flex' } }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 19 }}>notifications</span>
-        </IconButton>
         <IconButton size="small" sx={{ color: TEXT_MUTED, '&:hover': { color: TEXT_DIM }, display: { xs: 'none', sm: 'inline-flex' } }}>
           <span className="material-symbols-outlined" style={{ fontSize: 19 }}>help</span>
         </IconButton>
@@ -287,6 +296,7 @@ export default function Shell({ children }) {
   const role   = user?.role ?? 'end_user';
   const accent = ROLE_ACCENT[role] ?? '#5a8dc4';
   const title  = PAGE_TITLES[location.pathname] ?? 'TrackFlow';
+  const inboxPath = ROLE_INBOX[role] ?? '/home/inbox';
 
   const handleLogout = () => {
     localStorage.removeItem('tf_token');
@@ -331,7 +341,7 @@ export default function Shell({ children }) {
       )}
 
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <Topbar title={title} onMenuOpen={() => setOpen(true)} />
+        <Topbar title={title} onMenuOpen={() => setOpen(true)} inboxPath={inboxPath} />
         <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1.5, sm: 2, md: 3 } }}>
           {children}
         </Box>

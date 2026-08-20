@@ -10,7 +10,7 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:5173',   // Vite dev
   'https://localhost',        // nginx HTTPS
-  'http://localhost',         // nginx HTTP (before redirect)
+  'http://localhost',         // nginx HTTPZZ (before redirect)
 ];
 
 app.use(cors({
@@ -32,6 +32,7 @@ const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const categoriesRoutes = require('./routes/categories');
 const userRoutes = require('./routes/user');
+const notificationRoutes = require('./routes/notifications');
 
 const { authenticateToken } = require('./middleware/auth');
 
@@ -40,8 +41,7 @@ app.use('/api/tickets', authenticateToken, ticketRoutes);
 app.use('/api/admin', authenticateToken, adminRoutes);
 app.use('/api/categories', authenticateToken, categoriesRoutes);
 app.use('/api/users', authenticateToken, userRoutes);
-
-// Delete the second app.use(cors(...)) block entirely.
+app.use('/api/notifications', authenticateToken, notificationRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

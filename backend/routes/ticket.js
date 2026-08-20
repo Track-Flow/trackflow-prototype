@@ -1,6 +1,7 @@
 const pool = require("../config/db");
 const router = require("express").Router();
 const { authenticateToken } = require("../middleware/auth");
+const { notify, notifyRole } = require("../services/notifyService");
 
 //get all tickets
 router.get('/', authenticateToken, async (req, res) => {
@@ -133,9 +134,32 @@ router.post("/", authenticateToken, async (req, res) => {
       ],
     );
 
+    const ticketId = result.insertId;
+
+    // --- Notify: confirm submission to the End User (UC01 step 11) ---
+    // Fire-and-forget — notifyService never throws, so this can't fail the request.
+    notify({
+      userId: user_id,
+      ticketId,
+      message: `Your ticket #${ticketId} has been submitted successfully. Reference: TKT-${String(ticketId).padStart(4, '0')}.`,
+    });
+
+    // --- Notify: alert TLAs in the routed department (UC01 step 12) ---
+    // Only fires when the category maps to a real department — "Other"
+    // tickets have no department_id and go to the unrouted queue instead,
+    // which isn't wired up yet.
+    if (!isOther && department_id) {
+      notifyRole({
+        role: 'tla',
+        departmentId: department_id,
+        ticketId,
+        message: `New ticket #${ticketId} in your queue: "${ticket_title}".`,
+      });
+    }
+
     return res.status(201).json({
       message: "Ticket created successfully.",
-      ticket_id: result.insertId,
+      ticket_id: ticketId,
     });
   } catch (err) {
     console.error("Create ticket error:", err);
@@ -263,9 +287,23 @@ router.post("/:id/reopen", authenticateToken, async (req, res) => {
     );
 
     await conn.commit();
+
+    // --- Notify: ticket reopened ---
+    // Reopener is always tla/mss_manager/admin (end users can't hit this route),
+    // so the assigned TLA is who needs telling — unless they're the one who
+    // did it, in which case they already know.
+    const reopenedTicket = updatedRows[0];
+    if (reopenedTicket.assigned_user_id && reopenedTicket.assigned_user_id !== requesting_user_id) {
+      notify({
+        userId: reopenedTicket.assigned_user_id,
+        ticketId: id,
+        message: `Ticket #${id} "${reopenedTicket.ticket_title}" was reopened. Reason: ${reason.trim()}`,
+      });
+    }
+
     return res.status(200).json({
       message: "Ticket reopened successfully.",
-      ticket: updatedRows[0],
+      ticket: reopenedTicket,
     });
   } catch (err) {
     if (conn) {
@@ -469,7 +507,66 @@ router.patch("/:id", authenticateToken, async (req, res) => {
     );
 
     await conn.commit();
-    return res.status(200).json({ message: "Ticket updated successfully.", ticket: updated[0] });
+
+    const updatedTicket = updated[0];
+
+    // ─── Notifications (fire-and-forget, post-commit) ─────────────────────────
+    // Ticket owner (end user) is who these are aimed at throughout — they're
+    // the one who wants to know what's happening to their ticket.
+    const ownerId = updatedTicket.user_id;
+
+    if (isClaim) {
+      // UC04 step 9: confirm assignment to the claiming TLA
+      if (assignee_id) {
+        notify({
+          userId: assignee_id,
+          ticketId: id,
+          message: `You've been assigned ticket #${id}: "${updatedTicket.ticket_title}".`,
+        });
+      }
+      // UC04 step 10: tell the end user their ticket is being worked on
+      notify({
+        userId: ownerId,
+        ticketId: id,
+        message: `Your ticket #${id} has been assigned and is being worked on.`,
+      });
+    } else if (effectiveStatus !== undefined && effectiveStatus !== oldStatus) {
+      if (effectiveStatus === 'struggling') {
+        notify({
+          userId: ownerId,
+          ticketId: id,
+          message: `Your ticket #${id} is flagged as struggling.${resolution_notes ? ' ' + resolution_notes : ''}`,
+        });
+      } else if (effectiveStatus === 'resolved') {
+        notify({
+          userId: ownerId,
+          ticketId: id,
+          message: `Your ticket #${id} has been resolved.${resolution_notes ? ' ' + resolution_notes : ''}`,
+        });
+      } else {
+        // General status change (UC05 step 7) — covers open/in_progress/etc.
+        notify({
+          userId: ownerId,
+          ticketId: id,
+          message: `Your ticket #${id} status has been updated to: ${effectiveStatus}.`,
+        });
+      }
+    }
+
+    // Wrong-department reassignment flag: a TLA/manager clears department_id
+    // or moves the ticket back to "open" with no assignee while flagging it
+    // for the MSS Manager. We detect it here as: assignee cleared to null via
+    // explicit assignee_id === null, sent by a tla.
+    if (requesting_user_role === 'tla' && req.body.assignee_id === null && updatedTicket.department_id) {
+      notifyRole({
+        role: 'mss_manager',
+        departmentId: updatedTicket.department_id,
+        ticketId: id,
+        message: `Ticket #${id} flagged for reassignment by ${requesting_user_id}.`,
+      });
+    }
+
+    return res.status(200).json({ message: "Ticket updated successfully.", ticket: updatedTicket });
 
   } catch (err) {
     if (conn) {

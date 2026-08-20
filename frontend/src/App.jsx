@@ -19,6 +19,7 @@ import MyQueue from './pages/MyQueue';
 import ManagerReports from './pages/ManagerReports';
 import ManagerAllTickets from './pages/ManagerAlltickets';
 import Profile from './pages/Profile';
+import NotificationsInbox from './pages/NotificationsInbox';
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
 
 function getUser() {
@@ -65,7 +66,7 @@ export default function App() {
           <Route path="/tla"       element={<PrivateRoute roles={['tla']}><TLAHome /></PrivateRoute>} />
           <Route path="/tla/board" element={<PrivateRoute roles={['tla']}><TLABoard /></PrivateRoute>} />
           <Route path="/tla/queue" element={<PrivateRoute roles={['tla']}><MyQueue /></PrivateRoute>} />
-          <Route path="/tla/inbox" element={<PrivateRoute roles={['tla']}><Stub title="Inbox" icon="inbox" /></PrivateRoute>} />
+          <Route path="/tla/inbox" element={<PrivateRoute roles={['tla']}><NotificationsInbox /></PrivateRoute>} />
           <Route path="/tla/profile" element={<PrivateRoute roles={['tla']}><Profile /></PrivateRoute>} />
 
 
@@ -76,13 +77,14 @@ export default function App() {
           <Route path="/manager/depts"   element={<PrivateRoute roles={['mss_manager']}><Stub title="Departments" icon="groups" /></PrivateRoute>} />
           <Route path="/manager/reports" element={<PrivateRoute roles={['mss_manager']}><ManagerReports /></PrivateRoute>} />
           <Route path="/manager/tlas"    element={<PrivateRoute roles={['mss_manager']}><Stub title="TLAs" icon="badge" /></PrivateRoute>} />
+          <Route path="/manager/inbox"   element={<PrivateRoute roles={['mss_manager']}><NotificationsInbox /></PrivateRoute>} />
           <Route path="/manager/profile" element={<PrivateRoute roles={['mss_manager']}><Profile /></PrivateRoute>} />
 
           {/* End User */}
           <Route path="/home"         element={<PrivateRoute roles={['end_user']}><EndUserHome /></PrivateRoute>} />
           <Route path="/submit" element={<PrivateRoute roles={['end_user']}><SubmitTicket /></PrivateRoute>} />
           <Route path="/home/tickets" element={<PrivateRoute roles={['end_user']}><MyTickets /></PrivateRoute>} />
-          <Route path="/home/inbox"   element={<PrivateRoute roles={['end_user']}><Stub title="Notifications" icon="notifications" /></PrivateRoute>} />
+          <Route path="/home/inbox"   element={<PrivateRoute roles={['end_user']}><NotificationsInbox /></PrivateRoute>} />
           <Route path="/home/profile" element={<PrivateRoute roles={['end_user']}><Profile /></PrivateRoute>} />
           <Route path="/tickets/:id" element={<PrivateRoute roles={['tla','mss_manager','end_user','admin']}><TicketDetail /></PrivateRoute>} />
 
@@ -94,6 +96,7 @@ export default function App() {
 
           <Route path="/helpdesk/cats"    element={<PrivateRoute roles={['admin']}><Stub title="Categories" icon="category" /></PrivateRoute>} />
           <Route path="/helpdesk/audit"   element={<PrivateRoute roles={['admin']}><Stub title="Audit log" icon="shield" /></PrivateRoute>} />
+          <Route path="/helpdesk/inbox"   element={<PrivateRoute roles={['admin']}><NotificationsInbox /></PrivateRoute>} />
           <Route path="/helpdesk/profile" element={<PrivateRoute roles={['admin']}><Profile /></PrivateRoute>} />
 
           {/* Catch-all */}
