@@ -527,10 +527,10 @@ export default function ManagerReports() {
           '& .Mui-selected': { color: TEXT_BRIGHT },
         }}
       >
-        <Tab label="📈 Trend" />
-        <Tab label="🎯 SLA" />
-        <Tab label="👤 TLAs" />
-        <Tab label="🏢 Volume" />
+        <Tab label=" Trend" />
+        <Tab label=" SLA" />
+        <Tab label=" TLAs" />
+        <Tab label=" Volume" />
       </Tabs>
 
       {loading ? (
