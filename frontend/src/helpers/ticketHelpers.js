@@ -84,6 +84,8 @@ export function priorityMeta(priority) {
   return map[priority] ?? { label: priority, color: '#8fa2c0' };
 }
 
+
+
 /** Format a datetime string to a short relative label */
 export function timeAgo(dateStr) {
   if (!dateStr) return '—';
@@ -95,4 +97,105 @@ export function timeAgo(dateStr) {
   if (mins  < 60) return `${mins}m ago`;
   if (hours < 24) return `${hours}h ago`;
   return `${days}d ago`;
+}
+
+
+/**
+ * SLA compliance per department over a trailing window.
+ * A ticket meets SLA if resolved within `slaHours` of creation.
+ * An unresolved ticket older than `slaHours` counts as a breach.
+ * Tickets still open and younger than `slaHours` are excluded (not yet due).
+ * Returns one row per department, each carrying its own filtered ticket list
+ * so chart click-throughs don't need to re-filter.
+ */
+export function getSlaComplianceByDept(tickets, { windowDays = 30, slaHours = 24, target = 90 } = {}) {
+  const cutoff = Date.now() - windowDays * 86400000;
+  const inWindow = tickets.filter(t => t.ticket_created_at && new Date(t.ticket_created_at).getTime() >= cutoff);
+
+  const byDept = {};
+  for (const t of inWindow) {
+    const dept = t.department_name ?? 'Unrouted';
+    if (!byDept[dept]) byDept[dept] = { dept, tickets: [], met: 0, breached: 0 };
+    byDept[dept].tickets.push(t);
+
+    const created = new Date(t.ticket_created_at).getTime();
+    const resolved = t.resolved_at ? new Date(t.resolved_at).getTime() : null;
+    const ageHours = (Date.now() - created) / 3600000;
+
+    if (resolved !== null) {
+      const resHours = (resolved - created) / 3600000;
+      resHours <= slaHours ? byDept[dept].met++ : byDept[dept].breached++;
+    } else if (ageHours > slaHours) {
+      byDept[dept].breached++;
+    }
+    // else: still open, not yet due — excluded from both counts
+  }
+
+  return Object.values(byDept)
+    .map(d => {
+      const decided = d.met + d.breached;
+      const actualPct = decided > 0 ? Math.round((d.met / decided) * 100) : 100;
+      return { dept: d.dept, target, actual: actualPct, met: d.met, breached: d.breached, tickets: d.tickets };
+    })
+    .sort((a, b) => a.dept.localeCompare(b.dept));
+}
+
+/** Resolution time in hours for a single ticket, or null if unresolved. */
+export function getResolutionHours(ticket) {
+  if (!ticket.resolved_at || !ticket.ticket_created_at) return null;
+  return (new Date(ticket.resolved_at).getTime() - new Date(ticket.ticket_created_at).getTime()) / 3600000;
+}
+
+/** Whether a single ticket breaches the given SLA window (resolved late, or still open past due). */
+export function isSlaBreached(ticket, slaHours = 24) {
+  const created = new Date(ticket.ticket_created_at).getTime();
+  if (ticket.resolved_at) {
+    return (new Date(ticket.resolved_at).getTime() - created) / 3600000 > slaHours;
+  }
+  return (Date.now() - created) / 3600000 > slaHours;
+}
+
+/** Group tickets by the calendar date (YYYY-MM-DD) they were created/resolved, for trend drill-down. */
+export function groupTicketsByDate(tickets, dateField = 'ticket_created_at') {
+  const byDate = {};
+  for (const t of tickets) {
+    if (!t[dateField]) continue;
+    const key = new Date(t[dateField]).toISOString().slice(0, 10);
+    if (!byDate[key]) byDate[key] = [];
+    byDate[key].push(t);
+  }
+  return byDate;
+}
+
+/** Group tickets by assignee, for TLA workload drill-down. */
+export function groupTicketsByAssignee(tickets) {
+  const byAssignee = {};
+  for (const t of tickets) {
+    if (!t.assigned_user_id) continue;
+    const key = t.assigned_user_id;
+    if (!byAssignee[key]) {
+      byAssignee[key] = { id: key, name: t.assignee_name ?? key, dept: t.department_name ?? 'Unrouted', tickets: [] };
+    }
+    byAssignee[key].tickets.push(t);
+  }
+  return Object.values(byAssignee).map(a => ({
+    ...a,
+    active: a.tickets.filter(t => ['open', 'in_progress', 'struggling'].includes(t.ticket_status)).length,
+    resolved: a.tickets.filter(t => t.ticket_status === 'resolved' || t.ticket_status === 'closed').length,
+  }));
+}
+
+/** Group tickets by department, for volume-breakdown drill-down. */
+export function groupTicketsByDept(tickets) {
+  const byDept = {};
+  for (const t of tickets) {
+    const key = t.department_name ?? 'Unrouted';
+    if (!byDept[key]) byDept[key] = { name: key, tickets: [] };
+    byDept[key].tickets.push(t);
+  }
+  return Object.values(byDept).map(d => ({
+    ...d,
+    open: d.tickets.filter(t => !['resolved', 'closed'].includes(t.ticket_status)).length,
+    resolved: d.tickets.filter(t => ['resolved', 'closed'].includes(t.ticket_status)).length,
+  }));
 }

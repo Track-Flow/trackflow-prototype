@@ -319,6 +319,7 @@ router.post("/:id/reopen", authenticateToken, async (req, res) => {
 });
 
 // Patch /api/tickets/:id
+// Patch /api/tickets/:id
 router.patch("/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
   const {
@@ -392,9 +393,13 @@ router.patch("/:id", authenticateToken, async (req, res) => {
       values.push(ticket_description);
     }
 
+    // FIX: 'closed' must NOT fall into the reset branch — resolved_at was
+    // being wiped back to NULL every time the auto-close cron flipped a
+    // ticket from resolved -> closed, breaking SLA/reporting calculations.
+    // Only a genuine reopen (open/in_progress/struggling) should clear it.
     if (effectiveStatus === 'resolved') {
       fields.push('resolved_at = NOW()');
-    } else if (effectiveStatus !== undefined && effectiveStatus !== 'resolved') {
+    } else if (effectiveStatus !== undefined && !['resolved', 'closed'].includes(effectiveStatus)) {
       fields.push('resolved_at = NULL'); // reopened — reset it
     }
 
