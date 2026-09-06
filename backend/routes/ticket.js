@@ -2,10 +2,126 @@ const pool = require("../config/db");
 const router = require("express").Router();
 const { authenticateToken } = require("../middleware/auth");
 const { notify, notifyRole } = require("../services/notifyService");
+const upload = require('../middleware/upload');
+
+const path = require('path');
+const fs = require('fs');
+
+const SLA_HOURS = 24;
+
+async function runEscalationSweep(pool) {
+  const [candidates] = await pool.query(
+    `SELECT ticket_id, department_id, ticket_created_at
+     FROM ticket
+     WHERE ticket_status NOT IN ('resolved', 'closed')
+       AND ticket_escalated = 0
+       AND ticket_created_at <= NOW() - INTERVAL ? HOUR`,
+    [SLA_HOURS]
+  );
+
+  if (candidates.length === 0) return;
+
+  for (const ticket of candidates) {
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [[current]] = await conn.query(
+        `SELECT ticket_escalated, ticket_status FROM ticket WHERE ticket_id = ? FOR UPDATE`,
+        [ticket.ticket_id]
+      );
+      if (!current || current.ticket_escalated || ['resolved', 'closed'].includes(current.ticket_status)) {
+        await conn.rollback();
+        conn.release();
+        continue;
+      }
+
+      await conn.query(
+        `UPDATE ticket SET ticket_escalated = 1 WHERE ticket_id = ?`,
+        [ticket.ticket_id]
+      );
+
+      let escalatedTo = null;
+      if (ticket.department_id) {
+        const [[manager]] = await conn.query(
+          `SELECT user_id FROM user WHERE user_role = 'mss_manager' AND department_id = ? LIMIT 1`,
+          [ticket.department_id]
+        );
+        escalatedTo = manager?.user_id ?? null;
+      }
+      if (!escalatedTo) {
+        const [[admin]] = await conn.query(
+          `SELECT user_id FROM user WHERE user_role = 'admin' LIMIT 1`
+        );
+        escalatedTo = admin?.user_id ?? null;
+      }
+
+      if (escalatedTo) {
+        await conn.query(
+          `INSERT INTO escalation_log (ticket_id, escalated_by, escalated_to, reason, escalated_at)
+           VALUES (?, NULL, ?, ?, NOW())`,
+          [ticket.ticket_id, escalatedTo, `SLA breached: ticket open more than ${SLA_HOURS}h without resolution.`]
+        );
+      }
+
+      await conn.commit();
+
+      if (escalatedTo) {
+        notifyRole({
+          role: 'mss_manager',
+          departmentId: ticket.department_id,
+          ticketId: ticket.ticket_id,
+          message: `Ticket #${ticket.ticket_id} has breached its ${SLA_HOURS}h SLA and has been escalated.`,
+        });
+      }
+    } catch (err) {
+      await conn.rollback();
+      console.error(`Escalation sweep failed for ticket ${ticket.ticket_id}:`, err);
+    } finally {
+      conn.release();
+    }
+  }
+}
+
+
+// GET /api/tickets/:id/attachment/download
+router.get('/:id/attachment/download', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [[att]] = await pool.query(
+      `SELECT a.file_name, a.file_path, a.mime_type, t.user_id, t.assigned_user_id
+       FROM attachment a JOIN ticket t ON a.ticket_id = t.ticket_id
+       WHERE a.ticket_id = ?`,
+      [id]
+    );
+    if (!att) return res.status(404).json({ error: 'No attachment found for this ticket.' });
+
+    const isOwner = req.user.role === 'end_user' && att.user_id === req.user.id;
+    const isAssignedTla = req.user.role === 'tla' && att.assigned_user_id === req.user.id;
+    const isPrivileged = req.user.role === 'mss_manager' || req.user.role === 'admin';
+    if (!isOwner && !isAssignedTla && !isPrivileged) {
+      return res.status(403).json({ error: 'You do not have permission to view this attachment.' });
+    }
+
+    const fullPath = path.join(__dirname, '..', 'uploads', att.file_path);
+    if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File no longer exists on disk.' });
+
+    res.setHeader('Content-Type', att.mime_type);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(att.file_name)}"`);
+    fs.createReadStream(fullPath).pipe(res);
+  } catch (err) {
+    console.error('Attachment download error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
 
 //get all tickets
 router.get('/', authenticateToken, async (req, res) => {
   try {
+
+    await runEscalationSweep(pool);
+
+
     const [rows] = await pool.query(`
       SELECT
         t.*,
@@ -36,12 +152,22 @@ router.get("/:id", authenticateToken, async (req, res) => {
         d.department_name,
         c.category_name,
         a.user_name AS assignee_name,
-        a.user_id   AS assignee_id
+        a.user_id   AS assignee_id,
+        att.attachment_id,
+        att.file_name  AS attachment_file_name,
+        att.file_size  AS attachment_file_size,
+        att.mime_type  AS attachment_mime_type,
+        fb.feedback_id,
+        fb.rating      AS feedback_rating,
+        fb.comment     AS feedback_comment,
+        fb.submitted_at AS feedback_submitted_at
        FROM ticket t
-       LEFT JOIN user       u ON t.user_id         = u.user_id
-       LEFT JOIN department d ON t.department_id    = d.department_id
-       LEFT JOIN category   c ON t.category_id      = c.category_id
-       LEFT JOIN user       a ON t.assigned_user_id = a.user_id
+       LEFT JOIN user       u   ON t.user_id         = u.user_id
+       LEFT JOIN department d   ON t.department_id    = d.department_id
+       LEFT JOIN category   c   ON t.category_id      = c.category_id
+       LEFT JOIN user       a   ON t.assigned_user_id = a.user_id
+       LEFT JOIN attachment att ON att.ticket_id       = t.ticket_id
+       LEFT JOIN feedback   fb  ON fb.ticket_id        = t.ticket_id
        WHERE t.ticket_id = ?`,
       [id],
     );
@@ -52,6 +178,76 @@ router.get("/:id", authenticateToken, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+
+// POST /api/tickets/:id/escalate — manual escalation by MSS Manager
+router.post('/:id/escalate', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  if (req.user.role !== 'mss_manager' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Only MSS Managers or Admins can escalate a ticket.' });
+  }
+
+  if (!reason || !reason.trim()) {
+    return res.status(400).json({ error: 'A reason is required to escalate a ticket.' });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [[ticket]] = await conn.query(
+      `SELECT ticket_id, ticket_status, ticket_escalated, department_id
+       FROM ticket WHERE ticket_id = ? FOR UPDATE`,
+      [id]
+    );
+
+    if (!ticket) {
+      await conn.rollback();
+      conn.release();
+      return res.status(404).json({ error: 'Ticket not found.' });
+    }
+
+    if (['resolved', 'closed'].includes(ticket.ticket_status)) {
+      await conn.rollback();
+      conn.release();
+      return res.status(409).json({ error: 'Cannot escalate a resolved or closed ticket.' });
+    }
+
+    if (ticket.ticket_escalated) {
+      await conn.rollback();
+      conn.release();
+      return res.status(409).json({ error: 'This ticket has already been escalated.' });
+    }
+
+    await conn.query(`UPDATE ticket SET ticket_escalated = 1 WHERE ticket_id = ?`, [id]);
+
+    await conn.query(
+      `INSERT INTO escalation_log (ticket_id, escalated_by, escalated_to, reason, escalated_at)
+       VALUES (?, ?, ?, ?, NOW())`,
+      [id, req.user.id, req.user.id, reason.trim()]
+    );
+
+    await conn.commit();
+
+    notifyRole({
+      role: 'mss_manager',
+      departmentId: ticket.department_id,
+      ticketId: id,
+      message: `Ticket #${id} was manually escalated by ${req.user.id}.`,
+    });
+
+    const [rows] = await pool.query('SELECT * FROM ticket WHERE ticket_id = ?', [id]);
+    res.json(rows[0]);
+  } catch (err) {
+    await conn.rollback();
+    console.error('Manual escalation error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  } finally {
+    conn.release();
   }
 });
 
@@ -90,9 +286,8 @@ router.get("/:id/history", authenticateToken, async (req, res) => {
   }
 });
 
-//create a new ticket
 
-router.post("/", authenticateToken, async (req, res) => {
+router.post("/", authenticateToken, upload.single('file'), async (req, res) => {
   const { ticket_title, ticket_description, category_id } = req.body;
   const user_id = req.user.id; // from JWT payload
 
@@ -106,6 +301,7 @@ router.post("/", authenticateToken, async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection();
+    await conn.beginTransaction();
 
     // --- Resolve department from category ---
     const [categories] = await conn.query(
@@ -114,6 +310,7 @@ router.post("/", authenticateToken, async (req, res) => {
     );
 
     if (categories.length === 0) {
+      await conn.rollback();
       return res.status(404).json({ error: "Category not found." });
     }
 
@@ -136,6 +333,17 @@ router.post("/", authenticateToken, async (req, res) => {
 
     const ticketId = result.insertId;
 
+    // --- Insert attachment, if one was uploaded ---
+    if (req.file) {
+      await conn.query(
+        `INSERT INTO attachment (ticket_id, file_name, file_path, file_size, mime_type)
+         VALUES (?, ?, ?, ?, ?)`,
+        [ticketId, req.file.originalname, req.file.filename, req.file.size, req.file.mimetype]
+      );
+    }
+
+    await conn.commit();
+
     // --- Notify: confirm submission to the End User (UC01 step 11) ---
     // Fire-and-forget — notifyService never throws, so this can't fail the request.
     notify({
@@ -145,9 +353,6 @@ router.post("/", authenticateToken, async (req, res) => {
     });
 
     // --- Notify: alert TLAs in the routed department (UC01 step 12) ---
-    // Only fires when the category maps to a real department — "Other"
-    // tickets have no department_id and go to the unrouted queue instead,
-    // which isn't wired up yet.
     if (!isOther && department_id) {
       notifyRole({
         role: 'tla',
@@ -162,7 +367,18 @@ router.post("/", authenticateToken, async (req, res) => {
       ticket_id: ticketId,
     });
   } catch (err) {
+    if (conn) {
+      try { await conn.rollback(); } catch (rollbackErr) {
+        console.error("Rollback failed:", rollbackErr);
+      }
+    }
     console.error("Create ticket error:", err);
+    if (err.message?.includes('File type not allowed')) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'File is too large. Maximum size is 10MB.' });
+    }
     return res.status(500).json({ error: "Internal server error." });
   } finally {
     if (conn) conn.release();
@@ -205,10 +421,9 @@ router.post("/check-duplicate", authenticateToken, async (req, res) => {
   }
 });
 
+
+
 // ─── POST /api/tickets/:id/reopen ─────────────────────────────────────────────
-// Dedicated reopen route. Only TLA (must be the current assignee),
-// mss_manager, or admin can reopen. Only valid from resolved/closed.
-// Requires a non-empty `reason`. Keeps the existing assignee.
 router.post("/:id/reopen", authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body;
@@ -318,7 +533,53 @@ router.post("/:id/reopen", authenticateToken, async (req, res) => {
   }
 });
 
-// Patch /api/tickets/:id
+// POST /api/tickets/:id/feedback
+router.post('/:id/feedback', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { rating, comment } = req.body;
+  const user_id = req.user.id;
+
+  if (req.user.role !== 'end_user') {
+    return res.status(403).json({ error: 'Only the requester can submit feedback.' });
+  }
+
+  if (!rating || rating < 1 || rating > 5 || !Number.isInteger(rating)) {
+    return res.status(400).json({ error: 'Rating is required and must be a whole number from 1 to 5.' });
+  }
+
+  let conn;
+  try {
+    conn = await pool.getConnection();
+
+    const [[ticket]] = await conn.query(
+      'SELECT ticket_id, user_id FROM ticket WHERE ticket_id = ?',
+      [id]
+    );
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found.' });
+    if (ticket.user_id !== user_id) {
+      return res.status(403).json({ error: 'You can only submit feedback on your own tickets.' });
+    }
+
+    await conn.query(
+      `INSERT INTO feedback (ticket_id, user_id, rating, comment, submitted_at)
+       VALUES (?, ?, ?, ?, NOW())`,
+      [id, user_id, rating, comment?.trim() || null]
+    );
+
+    const [rows] = await conn.query('SELECT * FROM feedback WHERE ticket_id = ?', [id]);
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'Feedback has already been submitted for this ticket.' });
+    }
+    console.error('Submit feedback error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+
 // Patch /api/tickets/:id
 router.patch("/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;

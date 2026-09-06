@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Box, Typography, Card, Chip, Avatar,
   Table, TableBody, TableCell, TableHead, TableRow, LinearProgress, Tabs, Tab,
-  CircularProgress, Alert,
+  CircularProgress, Alert, TextField,
 } from '@mui/material';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -23,6 +23,91 @@ const PAPER2  = '#0c1422';
 
 const DEPT_COLORS = ['#5a8dc4', '#7a6fa8', '#c49a4a', '#5a8f72', '#8b5e6a', '#2ec8ff', '#ff9bd0', '#94a3b8'];
 const deptColor = (i) => DEPT_COLORS[i % DEPT_COLORS.length];
+
+// ─── Date range helpers ─────────────────────────────────────────────────────────
+// Each report keeps its own independent {start, end} range. Defaults give every
+// report a sensible initial window without forcing the user into one shared range.
+function isoDate(d) {
+  return d.toISOString().slice(0, 10);
+}
+function daysAgoIso(n) {
+  return isoDate(new Date(Date.now() - n * 86400000));
+}
+function todayIso() {
+  return isoDate(new Date());
+}
+// End-of-day cutoff so a ticket created on the selected end date is included.
+function endOfDayMs(dateStr) {
+  return new Date(`${dateStr}T23:59:59.999`).getTime();
+}
+function startOfDayMs(dateStr) {
+  return new Date(`${dateStr}T00:00:00.000`).getTime();
+}
+
+/** Filters tickets to those created within [start, end] (inclusive, by calendar day). */
+function filterByRange(tickets, start, end) {
+  if (!start || !end) return tickets;
+  const startMs = startOfDayMs(start);
+  const endMs = endOfDayMs(end);
+  return tickets.filter(t => {
+    if (!t.ticket_created_at) return false;
+    const created = new Date(t.ticket_created_at).getTime();
+    return created >= startMs && created <= endMs;
+  });
+}
+
+function rangeDayCount(start, end) {
+  if (!start || !end) return 0;
+  return Math.max(1, Math.round((endOfDayMs(end) - startOfDayMs(start)) / 86400000) + 1);
+}
+
+function fmtRangeLabel(start, end) {
+  if (!start || !end) return '';
+  const s = new Date(start).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
+  const e = new Date(end).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
+  return `${s} – ${e}`;
+}
+
+/** Shared date-range control rendered at the top of each report. */
+function DateRangeControl({ start, end, onChange, error }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+      <TextField
+        label="Start date"
+        type="date"
+        size="small"
+        value={start}
+        onChange={(e) => onChange(e.target.value, end)}
+        InputLabelProps={{ shrink: true }}
+        sx={{
+          '& .MuiInputBase-input': { color: TEXT_BRIGHT, fontSize: 13 },
+          '& .MuiInputLabel-root': { color: TEXT_DIM, fontSize: 12.5 },
+          '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER },
+          bgcolor: PAPER2, borderRadius: 1,
+        }}
+      />
+      <TextField
+        label="End date"
+        type="date"
+        size="small"
+        value={end}
+        onChange={(e) => onChange(start, e.target.value)}
+        InputLabelProps={{ shrink: true }}
+        sx={{
+          '& .MuiInputBase-input': { color: TEXT_BRIGHT, fontSize: 13 },
+          '& .MuiInputLabel-root': { color: TEXT_DIM, fontSize: 12.5 },
+          '& .MuiOutlinedInput-notchedOutline': { borderColor: BORDER },
+          bgcolor: PAPER2, borderRadius: 1,
+        }}
+      />
+      {error && (
+        <Typography sx={{ fontSize: 12, color: '#b85c52', alignSelf: 'center', mt: { xs: 0, sm: 1 } }}>
+          {error}
+        </Typography>
+      )}
+    </Box>
+  );
+}
 
 function StatBox({ label, value, color, icon, sub }) {
   return (
@@ -91,20 +176,23 @@ function fmtDay(iso) {
 
 // ─── Report 1: Ticket Volume Trend ─────────────────────────────────────────────
 function TicketTrendReport({ tickets, onDrillDown }) {
-  const windowDays = 30;
+  const [start, setStart] = useState(daysAgoIso(29));
+  const [end, setEnd] = useState(todayIso());
+  const rangeError = start && end && start > end ? 'Start date must be before end date.' : '';
+
+  const scoped = useMemo(() => filterByRange(tickets, start, end), [tickets, start, end]);
+  const windowDays = rangeDayCount(start, end);
 
   const trend = useMemo(() => {
-    const cutoff = Date.now() - windowDays * 86400000;
-    const inWindow = tickets.filter(t => new Date(t.ticket_created_at).getTime() >= cutoff);
-    const openedByDate = groupTicketsByDate(inWindow, 'ticket_created_at');
+    const openedByDate = groupTicketsByDate(scoped, 'ticket_created_at');
     const resolvedByDate = groupTicketsByDate(
-      inWindow.filter(t => t.resolved_at),
+      scoped.filter(t => t.resolved_at),
       'resolved_at'
     );
 
     const days = [];
     for (let i = windowDays - 1; i >= 0; i--) {
-      const d = new Date(Date.now() - i * 86400000);
+      const d = new Date(endOfDayMs(end || todayIso()) - i * 86400000);
       const key = d.toISOString().slice(0, 10);
       days.push({
         key,
@@ -116,7 +204,7 @@ function TicketTrendReport({ tickets, onDrillDown }) {
       });
     }
     return days;
-  }, [tickets]);
+  }, [scoped, windowDays, end]);
 
   const totalOpen = trend.reduce((s, d) => s + d.open, 0);
   const totalRes  = trend.reduce((s, d) => s + d.resolved, 0);
@@ -131,10 +219,11 @@ function TicketTrendReport({ tickets, onDrillDown }) {
 
   return (
     <Box>
-      <SectionHeader number="1" title="Ticket Volume Trend" subtitle="Tracks daily ticket creation vs. resolution over 2 weeks. Identifies backlog build-up and helps forecast staffing needs." />
+      <SectionHeader number="1" title="Ticket Volume Trend" subtitle="Tracks daily ticket creation vs. resolution over the selected date range. Identifies backlog build-up and helps forecast staffing needs." />
+      <DateRangeControl start={start} end={end} onChange={(s, e) => { setStart(s); setEnd(e); }} error={rangeError} />
       <Box sx={{ display: 'flex', gap: { xs: 1.5, md: 2 }, mb: 2.5, flexWrap: 'wrap' }}>
-        <StatBox label="Total opened"    value={totalOpen}               color="#5a8dc4" icon="inbox"        sub={`Over ${windowDays} days`} />
-        <StatBox label="Total resolved"  value={totalRes}                color="#5a8f72" icon="check_circle" sub={`Over ${windowDays} days`} />
+        <StatBox label="Total opened"    value={totalOpen}               color="#5a8dc4" icon="inbox"        sub={fmtRangeLabel(start, end)} />
+        <StatBox label="Total resolved"  value={totalRes}                color="#5a8f72" icon="check_circle" sub={fmtRangeLabel(start, end)} />
         <StatBox label="Avg resolved/day"value={trend.length ? Math.round(totalRes/trend.length) : 0} color="#7a6fa8" icon="trending_up" />
         <StatBox label="Peak open day"   value={peak?.d ?? '—'}          color="#c49a4a" icon="warning"      sub={peak ? `${peak.open} tickets` : ''} />
       </Box>
@@ -143,7 +232,7 @@ function TicketTrendReport({ tickets, onDrillDown }) {
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={trend} margin={{ top: 5, right: 10, left: -15, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
-            <XAxis dataKey="d" tick={AXIS_STYLE} axisLine={false} tickLine={false} interval={2} />
+            <XAxis dataKey="d" tick={AXIS_STYLE} axisLine={false} tickLine={false} interval={Math.max(0, Math.floor(windowDays / 12))} />
             <YAxis tick={AXIS_STYLE} axisLine={false} tickLine={false} />
             <Tooltip content={<TFTooltip />} />
             <Legend wrapperStyle={{ fontSize: 11, color: TEXT_DIM }} />
@@ -178,7 +267,7 @@ function TicketTrendReport({ tickets, onDrillDown }) {
             </TableBody>
           </Table>
         </Box>
-        <Motivation text="Enables the MSS Manager to identify backlog trends and forecast staffing needs. A persistent gap between opened and resolved signals capacity strain. Click any date row to see the individual tickets." />
+        <Motivation text="Enables the MSS Manager to identify backlog trends and forecast staffing needs over any date range they choose. A persistent gap between opened and resolved signals capacity strain. Click any date row to see the individual tickets." />
       </Card>
     </Box>
   );
@@ -187,12 +276,17 @@ function TicketTrendReport({ tickets, onDrillDown }) {
 // ─── Report 2: SLA Compliance by Department ────────────────────────────────────
 function SlaReport({ tickets, onDrillDown }) {
   const SLA_HOURS = 24;
-  const WINDOW_DAYS = 30;
   const TARGET = 90;
+  const [start, setStart] = useState(daysAgoIso(29));
+  const [end, setEnd] = useState(todayIso());
+  const rangeError = start && end && start > end ? 'Start date must be before end date.' : '';
+
+  const scoped = useMemo(() => filterByRange(tickets, start, end), [tickets, start, end]);
+  const windowDays = rangeDayCount(start, end);
 
   const compliance = useMemo(
-    () => getSlaComplianceByDept(tickets, { windowDays: WINDOW_DAYS, slaHours: SLA_HOURS, target: TARGET }),
-    [tickets]
+    () => getSlaComplianceByDept(scoped, { windowDays, slaHours: SLA_HOURS, target: TARGET }),
+    [scoped, windowDays]
   );
 
   const breaches  = compliance.filter(r => r.actual < r.target);
@@ -206,7 +300,7 @@ function SlaReport({ tickets, onDrillDown }) {
     if (!row) return;
     onDrillDown({
       title: row.dept,
-      subtitle: `${row.actual}% actual vs ${row.target}% target · last ${WINDOW_DAYS} days`,
+      subtitle: `${row.actual}% actual vs ${row.target}% target · ${fmtRangeLabel(start, end)}`,
       tickets: row.tickets,
       showSla: true,
       slaHours: SLA_HOURS,
@@ -215,7 +309,8 @@ function SlaReport({ tickets, onDrillDown }) {
 
   return (
     <Box>
-      <SectionHeader number="2" title="SLA Compliance by Department" subtitle={`Measures each department's resolution rate against a fixed ${SLA_HOURS}h SLA target, over the last ${WINDOW_DAYS} days. Drives accountability and informs renegotiation.`} />
+      <SectionHeader number="2" title="SLA Compliance by Department" subtitle={`Measures each department's resolution rate against a fixed ${SLA_HOURS}h SLA target, over the selected date range. Drives accountability and informs renegotiation.`} />
+      <DateRangeControl start={start} end={end} onChange={(s, e) => { setStart(s); setEnd(e); }} error={rangeError} />
       <Box sx={{ display: 'flex', gap: { xs: 1.5, md: 2 }, mb: 2.5, flexWrap: 'wrap' }}>
         <StatBox label="Target"       value={`${TARGET}%`} color="#5a8dc4" icon="flag" />
         <StatBox label="Avg actual"   value={`${avgActual}%`} color={avgActual >= TARGET ? '#5a8f72' : '#b85c52'} icon="percent" />
@@ -224,7 +319,7 @@ function SlaReport({ tickets, onDrillDown }) {
       </Box>
 
       {compliance.length === 0 ? (
-        <Alert severity="info" sx={{ mb: 2 }}>No tickets created in the last {WINDOW_DAYS} days.</Alert>
+        <Alert severity="info" sx={{ mb: 2 }}>No tickets created in the selected range.</Alert>
       ) : (
         <>
           <Card sx={{ p: { xs: 1.5, md: 2.5 }, mb: 2, bgcolor: PAPER, border: `1px solid ${BORDER}` }}>
@@ -277,7 +372,7 @@ function SlaReport({ tickets, onDrillDown }) {
                 </TableBody>
               </Table>
             </Box>
-            <Motivation text="Measures each department's resolution rate against a fixed SLA target. Drives accountability and informs SLA renegotiation with department heads. Click a row to see every ticket behind the number." />
+            <Motivation text="Measures each department's resolution rate against a fixed SLA target over any date range the manager selects. Drives accountability and informs SLA renegotiation with department heads. Click a row to see every ticket behind the number." />
           </Card>
         </>
       )}
@@ -287,7 +382,12 @@ function SlaReport({ tickets, onDrillDown }) {
 
 // ─── Report 3: TLA Workload Distribution ───────────────────────────────────────
 function WorkloadReport({ tickets, onDrillDown }) {
-  const workload = useMemo(() => groupTicketsByAssignee(tickets), [tickets]);
+  const [start, setStart] = useState(daysAgoIso(29));
+  const [end, setEnd] = useState(todayIso());
+  const rangeError = start && end && start > end ? 'Start date must be before end date.' : '';
+
+  const scoped = useMemo(() => filterByRange(tickets, start, end), [tickets, start, end]);
+  const workload = useMemo(() => groupTicketsByAssignee(scoped), [scoped]);
 
   const topTLA      = workload.length ? [...workload].sort((a, b) => b.resolved - a.resolved)[0] : null;
   const totalActive = workload.reduce((s, t) => s + t.active, 0);
@@ -295,14 +395,15 @@ function WorkloadReport({ tickets, onDrillDown }) {
   const handleTlaClick = (tla) => {
     onDrillDown({
       title: tla.name,
-      subtitle: `${tla.active} active · ${tla.resolved} resolved · ${tla.dept}`,
+      subtitle: `${tla.active} active · ${tla.resolved} resolved · ${tla.dept} · ${fmtRangeLabel(start, end)}`,
       tickets: tla.tickets,
     });
   };
 
   return (
     <Box>
-      <SectionHeader number="3" title="TLA Workload Distribution" subtitle="Compares active ticket load and resolved count per TLA. Identifies overloaded agents and helps balance assignments." />
+      <SectionHeader number="3" title="TLA Workload Distribution" subtitle="Compares active ticket load and resolved count per TLA over the selected date range. Identifies overloaded agents and helps balance assignments." />
+      <DateRangeControl start={start} end={end} onChange={(s, e) => { setStart(s); setEnd(e); }} error={rangeError} />
       <Box sx={{ display: 'flex', gap: { xs: 1.5, md: 2 }, mb: 2.5, flexWrap: 'wrap' }}>
         <StatBox label="Total active"    value={totalActive}                          color="#5a8dc4" icon="confirmation_number" />
         <StatBox label="Top resolver"    value={topTLA ? topTLA.name.split(' ')[0] : '—'} color="#7a6fa8" icon="emoji_events" sub={topTLA ? `${topTLA.resolved} resolved` : ''} />
@@ -310,7 +411,7 @@ function WorkloadReport({ tickets, onDrillDown }) {
       </Box>
 
       {workload.length === 0 ? (
-        <Alert severity="info" sx={{ mb: 2 }}>No tickets currently assigned to a TLA.</Alert>
+        <Alert severity="info" sx={{ mb: 2 }}>No tickets assigned to a TLA in the selected range.</Alert>
       ) : (
         <Card sx={{ bgcolor: PAPER, border: `1px solid ${BORDER}`, overflow: 'hidden', mb: 2 }}>
           <Box sx={{ overflowX: 'auto' }}>
@@ -357,7 +458,7 @@ function WorkloadReport({ tickets, onDrillDown }) {
               </TableBody>
             </Table>
           </Box>
-          <Motivation text="Provides the MSS Manager with visibility into individual TLA workload, enabling recognition of high performers and data-driven workload balancing. Click a TLA to see their active and resolved tickets." />
+          <Motivation text="Provides the MSS Manager with visibility into individual TLA workload for any date range selected, enabling recognition of high performers and data-driven workload balancing. Click a TLA to see their active and resolved tickets." />
         </Card>
       )}
     </Box>
@@ -366,9 +467,14 @@ function WorkloadReport({ tickets, onDrillDown }) {
 
 // ─── Report 4: Department Volume Breakdown ─────────────────────────────────────
 function DeptVolumeReport({ tickets, onDrillDown }) {
+  const [start, setStart] = useState(daysAgoIso(29));
+  const [end, setEnd] = useState(todayIso());
+  const rangeError = start && end && start > end ? 'Start date must be before end date.' : '';
+
+  const scoped = useMemo(() => filterByRange(tickets, start, end), [tickets, start, end]);
   const deptLoad = useMemo(
-    () => groupTicketsByDept(tickets).map((d, i) => ({ ...d, color: deptColor(i) })),
-    [tickets]
+    () => groupTicketsByDept(scoped).map((d, i) => ({ ...d, color: deptColor(i) })),
+    [scoped]
   );
 
   const allTotal    = deptLoad.reduce((s, d) => s + d.open + d.resolved, 0);
@@ -381,7 +487,7 @@ function DeptVolumeReport({ tickets, onDrillDown }) {
     if (!dept) return;
     onDrillDown({
       title: dept.name,
-      subtitle: `${dept.open} open · ${dept.resolved} resolved`,
+      subtitle: `${dept.open} open · ${dept.resolved} resolved · ${fmtRangeLabel(start, end)}`,
       tickets: dept.tickets,
     });
   };
@@ -393,7 +499,8 @@ function DeptVolumeReport({ tickets, onDrillDown }) {
 
   return (
     <Box>
-      <SectionHeader number="4" title="Department Volume Breakdown" subtitle="Shows total ticket volume share per department. Supports resource allocation and identifies which departments generate the most demand." />
+      <SectionHeader number="4" title="Department Volume Breakdown" subtitle="Shows total ticket volume share per department over the selected date range. Supports resource allocation and identifies which departments generate the most demand." />
+      <DateRangeControl start={start} end={end} onChange={(s, e) => { setStart(s); setEnd(e); }} error={rangeError} />
       <Box sx={{ display: 'flex', gap: { xs: 1.5, md: 2 }, mb: 2.5, flexWrap: 'wrap' }}>
         <StatBox label="Total tickets"  value={allTotal}    color="#5a8dc4" icon="confirmation_number" />
         <StatBox label="Total open"     value={allOpen}     color="#c49a4a" icon="inbox" sub="Needs attention" />
@@ -402,7 +509,7 @@ function DeptVolumeReport({ tickets, onDrillDown }) {
       </Box>
 
       {deptLoad.length === 0 ? (
-        <Alert severity="info" sx={{ mb: 2 }}>No tickets found.</Alert>
+        <Alert severity="info" sx={{ mb: 2 }}>No tickets found in the selected range.</Alert>
       ) : (
         <>
           <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
@@ -477,10 +584,10 @@ function DeptVolumeReport({ tickets, onDrillDown }) {
                 );
               })}
               {topDept && (
-                <Insight color="#5a8dc4" icon="📊" text={`${topDept.name} generates the highest ticket volume. Consider whether current TLA headcount is sufficient or whether student self-service docs could reduce repeat tickets.`} />
+                <Insight color="#5a8dc4" icon="📊" text={`${topDept.name} generates the highest ticket volume in this range. Consider whether current TLA headcount is sufficient or whether student self-service docs could reduce repeat tickets.`} />
               )}
             </Box>
-            <Motivation text="Shows total ticket volume share per department to support resource allocation and identify which departments generate the most demand. Click any department to see its ticket list." />
+            <Motivation text="Shows total ticket volume share per department, over any date range selected, to support resource allocation and identify which departments generate the most demand. Click any department to see its ticket list." />
           </Card>
         </>
       )}
@@ -510,7 +617,7 @@ export default function ManagerReports() {
       <Box sx={{ mb: 2.5 }}>
         <Typography sx={{ fontSize: 10.5, color: ACCENT, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', mb: 0.5 }}>MSS Manager</Typography>
         <Typography variant="h4" sx={{ fontSize: { xs: '1.5rem', md: '2rem' }, color: TEXT_BRIGHT }}>Reports &amp; Analytics</Typography>
-        <Typography sx={{ fontSize: 12.5, color: TEXT_DIM, mt: 0.5 }}>Generated {generated} · Live data</Typography>
+        <Typography sx={{ fontSize: 12.5, color: TEXT_DIM, mt: 0.5 }}>Generated {generated} · Live data · each report below has its own date range</Typography>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}

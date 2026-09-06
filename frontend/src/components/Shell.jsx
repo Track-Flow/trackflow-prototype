@@ -88,8 +88,7 @@ const NAV = {
   ],
   admin: [
     { group: 'Help Desk' },
-    { icon: 'alt_route',           label: 'Unrouted queue', path: '/helpdesk'         },
-    { icon: 'confirmation_number', label: 'All tickets',    path: '/helpdesk/tickets' },
+    { icon: 'confirmation_number', label: 'All tickets',    path: '/helpdesk' },
     { icon: 'manage_accounts',     label: 'User access',    path: '/helpdesk/users'   },
     { group: 'Config' },
     { icon: 'category',            label: 'Categories',     path: '/helpdesk/cats'    },

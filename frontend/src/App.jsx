@@ -90,8 +90,7 @@ export default function App() {
 
 
           {/* Help Desk */}
-          <Route path="/helpdesk"         element={<PrivateRoute roles={['admin']}><HelpdeskHome /></PrivateRoute>} />
-          <Route path="/helpdesk/tickets" element={<PrivateRoute roles={['admin']}><HelpdeskAllTickets /></PrivateRoute>} />
+          <Route path="/helpdesk" element={<PrivateRoute roles={['admin']}><HelpdeskAllTickets /></PrivateRoute>} />
           <Route path="/helpdesk/users" element={<PrivateRoute roles={['admin']}><AccessManagement /></PrivateRoute>} />
 
           <Route path="/helpdesk/cats"    element={<PrivateRoute roles={['admin']}><Stub title="Categories" icon="category" /></PrivateRoute>} />

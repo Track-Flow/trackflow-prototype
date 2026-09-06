@@ -235,7 +235,7 @@ function StepCategory({ categories, selected, onSelect }) {
 }
 
 // ─── Step 2: Details ──────────────────────────────────────────────────────────
-function StepDetails({ form, onChange, files, onFiles }) {
+function StepDetails({ form, onChange, file, onFile }) {
   return (
     <Box>
       <Typography
@@ -268,10 +268,10 @@ function StepDetails({ form, onChange, files, onFiles }) {
         <Box>
           <input
             type="file"
-            multiple
             id="tf-attach"
+            accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain"
             style={{ display: "none" }}
-            onChange={(e) => onFiles(Array.from(e.target.files))}
+            onChange={(e) => onFile(e.target.files[0] ?? null)}
           />
           <Button
             component="label"
@@ -288,26 +288,39 @@ function StepDetails({ form, onChange, files, onFiles }) {
             }
             sx={{ color: "#94a3b8", borderColor: BORDER, fontSize: 12 }}
           >
-            Attach files
+            {file ? "Change file" : "Attach a file"}
           </Button>
-          {files.length > 0 && (
-            <Box sx={{ mt: 1, display: "flex", flexWrap: "wrap", gap: 0.75 }}>
-              {files.map((f, i) => (
-                <Box
-                  key={i}
-                  sx={{
-                    px: 1.25,
-                    py: 0.4,
-                    borderRadius: 1,
-                    fontSize: 11.5,
-                    bgcolor: "rgba(90,141,196,0.1)",
-                    color: ACCENT,
-                    border: `1px solid ${ACCENT}33`,
-                  }}
-                >
-                  {f.name}
-                </Box>
-              ))}
+          <Typography sx={{ fontSize: 10.5, color: "#64748b", mt: 0.5 }}>
+            Images, PDF, or text — up to 10MB
+          </Typography>
+          {file && (
+            <Box
+              sx={{ mt: 1, display: "flex", alignItems: "center", gap: 0.75 }}
+            >
+              <Box
+                sx={{
+                  px: 1.25,
+                  py: 0.4,
+                  borderRadius: 1,
+                  fontSize: 11.5,
+                  bgcolor: "rgba(90,141,196,0.1)",
+                  color: ACCENT,
+                  border: `1px solid ${ACCENT}33`,
+                }}
+              >
+                {file.name}
+              </Box>
+              <Typography
+                onClick={() => onFile(null)}
+                sx={{
+                  fontSize: 11,
+                  color: "#64748b",
+                  cursor: "pointer",
+                  "&:hover": { color: "#e3e8f0" },
+                }}
+              >
+                Remove
+              </Typography>
             </Box>
           )}
         </Box>
@@ -317,7 +330,7 @@ function StepDetails({ form, onChange, files, onFiles }) {
 }
 
 // ─── Step 3: Review ───────────────────────────────────────────────────────────
-function StepReview({ form, category, files }) {
+function StepReview({ form, category, file }) {
   const labelSx = {
     fontSize: 10.5,
     fontWeight: 700,
@@ -355,7 +368,7 @@ function StepReview({ form, category, files }) {
           <Typography sx={labelSx}>Subject</Typography>
           <Typography sx={valueSx}>{form.ticket_title}</Typography>
         </Box>
-        <Box sx={{ mb: files.length > 0 ? 2 : 0 }}>
+        <Box sx={{ mb: file ? 2 : 0 }}>
           <Typography sx={labelSx}>Description</Typography>
           <Typography
             sx={{
@@ -368,26 +381,23 @@ function StepReview({ form, category, files }) {
             {form.ticket_description}
           </Typography>
         </Box>
-        {files.length > 0 && (
+        {file && (
           <Box>
-            <Typography sx={labelSx}>Attachments</Typography>
-            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mt: 0.5 }}>
-              {files.map((f, i) => (
-                <Box
-                  key={i}
-                  sx={{
-                    px: 1.25,
-                    py: 0.4,
-                    borderRadius: 1,
-                    fontSize: 11.5,
-                    bgcolor: "rgba(90,141,196,0.1)",
-                    color: ACCENT,
-                    border: `1px solid ${ACCENT}33`,
-                  }}
-                >
-                  {f.name}
-                </Box>
-              ))}
+            <Typography sx={labelSx}>Attachment</Typography>
+            <Box
+              sx={{
+                display: "inline-block",
+                mt: 0.5,
+                px: 1.25,
+                py: 0.4,
+                borderRadius: 1,
+                fontSize: 11.5,
+                bgcolor: "rgba(90,141,196,0.1)",
+                color: ACCENT,
+                border: `1px solid ${ACCENT}33`,
+              }}
+            >
+              {file.name}
             </Box>
           </Box>
         )}
@@ -495,11 +505,12 @@ export default function SubmitTicket() {
   const [categories, setCategories] = useState([]);
   const [catLoading, setCatLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [file, setFile] = useState(null);
+
   const [form, setForm] = useState({
     ticket_title: "",
     ticket_description: "",
   });
-  const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [newId, setNewId] = useState(null);
@@ -569,10 +580,14 @@ export default function SubmitTicket() {
     setLoading(true);
     setError("");
     try {
-      const res = await api.post("/tickets", {
-        ticket_title: form.ticket_title.trim(),
-        ticket_description: form.ticket_description.trim(),
-        category_id: selected.category_id,
+      const payload = new FormData();
+      payload.append("ticket_title", form.ticket_title.trim());
+      payload.append("ticket_description", form.ticket_description.trim());
+      payload.append("category_id", selected.category_id);
+      if (file) payload.append("file", file);
+
+      const res = await api.post("/tickets", payload, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
       setNewId(res.data?.ticket_id ?? res.data?.id ?? null);
       setSuccess(true);
@@ -587,7 +602,7 @@ export default function SubmitTicket() {
     setStep(1);
     setSelected(null);
     setForm({ ticket_title: "", ticket_description: "" });
-    setFiles([]);
+    setFile(null); // was: setFiles([])
     setNewId(null);
     setSuccess(false);
     setDuplicates([]);
@@ -731,17 +746,17 @@ export default function SubmitTicket() {
                 onSelect={setSelected}
               />
             )}
+
             {step === 2 && (
               <StepDetails
                 form={form}
                 onChange={handleChange}
-                files={files}
-                onFiles={setFiles}
+                file={file}
+                onFile={setFile}
               />
             )}
-            {step === 3 && (
-              <StepReview form={form} category={selected} files={files} />
-            )}
+
+            {step === 3 && <StepReview form={form} category={selected} file={file} />}
           </>
         )}
 
@@ -784,8 +799,13 @@ export default function SubmitTicket() {
             }
             sx={{ px: { xs: 2.5, md: 3.5 }, py: 0.9, fontWeight: 700 }}
           >
-              {dupChecking ? 'Checking…' : loading ? 'Submitting…' : step === 3 ? 'Submit ticket' : 'Continue →'}
-
+            {dupChecking
+              ? "Checking…"
+              : loading
+                ? "Submitting…"
+                : step === 3
+                  ? "Submit ticket"
+                  : "Continue →"}
           </Button>
         </Box>
       </Card>
