@@ -92,7 +92,6 @@ const NAV = {
     { icon: 'manage_accounts',     label: 'User access',    path: '/helpdesk/users'   },
     { group: 'Config' },
     { icon: 'category',            label: 'Categories',     path: '/helpdesk/cats'    },
-    { icon: 'shield',              label: 'Audit log',      path: '/helpdesk/audit'   },
     { group: 'Account' },
     { icon: 'inbox',               label: 'Inbox',          path: '/helpdesk/inbox'   },
   ],

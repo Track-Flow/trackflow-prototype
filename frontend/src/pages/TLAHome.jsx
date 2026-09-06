@@ -15,6 +15,7 @@ const BORDER      = 'rgba(148,163,184,0.10)';
 const TEXT_DIM    = '#94a3b8';
 const TEXT_MUTED  = '#64748b';
 const TEXT_BRIGHT = '#e3e8f0';
+const UNROUTED    = '#8b5e6a';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getInitials(name = '') {
@@ -74,6 +75,7 @@ function TicketRow({ ticket }) {
 
   const assignedUserId = ticket.assigned_user_id ?? ticket.assignee_id;
   const isClaimed       = assignedUserId != null;
+  const isUnrouted      = ticket.department_id == null;
 
   return (
     <Box
@@ -95,6 +97,17 @@ function TicketRow({ ticket }) {
             height: 18, fontSize: 9.5, fontWeight: 700,
             bgcolor: `${s.color}20`, color: s.color, border: `1px solid ${s.color}33`,
           }} />
+          {isUnrouted && !isClaimed && (
+            <Chip
+              icon={<span className="material-symbols-outlined" style={{ fontSize: 11 }}>public</span>}
+              label="Open to all"
+              size="small"
+              sx={{
+                height: 18, fontSize: 9.5, fontWeight: 700,
+                bgcolor: `${UNROUTED}20`, color: UNROUTED, border: `1px solid ${UNROUTED}44`,
+              }}
+            />
+          )}
         </Box>
         <Typography sx={{ fontSize: 13.5, fontWeight: 600, color: TEXT_BRIGHT, '&:hover': { color: ACCENT } }} noWrap>
           {ticket.ticket_title}
@@ -164,8 +177,12 @@ export default function TLAHome() {
   const fetchTickets = async () => {
     try {
       const res = await api.get('/tickets');
+      // "Other"-category tickets have no department (department_id === null) and
+      // are never auto-routed — per client direction, these are visible to every
+      // TLA regardless of department, not routed to or hidden from anyone.
       const filtered = res.data.filter(t =>
-        user?.department_id ? t.department_id === user.department_id : true
+        t.department_id == null ||
+        (user?.department_id ? t.department_id === user.department_id : true)
       );
       setTickets(filtered);
     } catch (err) {
@@ -255,7 +272,7 @@ export default function TLAHome() {
                 Task feed
               </Typography>
               <Typography sx={{ fontSize: 11, color: TEXT_MUTED, mt: 0.25 }}>
-                Open tickets · oldest first
+                Open tickets · oldest first · includes "Other" tickets open to any TLA
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>

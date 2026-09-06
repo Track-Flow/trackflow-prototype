@@ -16,6 +16,7 @@ const TEXT_BRIGHT = '#e3e8f0';
 const BORDER      = 'rgba(148,163,184,0.10)';
 const STRUGGLING  = '#e5484d'; // bright red
 const MINE        = '#2bb3a3'; // teal — tickets assigned to me
+const UNROUTED    = '#8b5e6a'; // "Other"/department-less tickets, open to all
 
 // TEST MODE — frontend fully owns auto-close.
 // Set back to 24*60*60*1000 (or higher) for production.
@@ -231,6 +232,7 @@ function ClosesInBadge({ ticketId, resolvedAt, onAutoClosed }) {
 function TicketCard({ ticket, onDragStart, onClick, onClaim, onAutoClosed, isDragging, isClaiming, userId }) {
   const { isClaimed, isOwned, isOtherOwned, isClosed, isResolved, draggable } = cardLockState(ticket, userId);
   const isStruggling  = ticket.ticket_status === 'struggling';
+  const isUnrouted    = ticket.department_id == null;
   const priorityColor = getPriorityColor(ticket.ticket_priority);
   const assigneeName  = ticket.assignee_name ?? (ticket.assigned_user_id != null ? String(ticket.assigned_user_id) : 'Unknown');
   const assigneeFirst = ticket.assignee_name ? ticket.assignee_name.split(' ')[0] : (ticket.assigned_user_id ?? '?');
@@ -294,6 +296,18 @@ function TicketCard({ ticket, onDragStart, onClick, onClaim, onAutoClosed, isDra
                 YOURS
               </Typography>
             </Box>
+          )}
+          {isUnrouted && !isClaimed && !isResolved && !isClosed && (
+            <Tooltip title='Submitted under "Other" — no department, open to any TLA' arrow>
+              <Box sx={{
+                px: 0.6, py: 0.05, borderRadius: 0.5,
+                bgcolor: `${UNROUTED}22`, border: `1px solid ${UNROUTED}55`,
+              }}>
+                <Typography sx={{ fontSize: 8.5, fontWeight: 800, color: UNROUTED, letterSpacing: '0.06em' }}>
+                  OPEN TO ALL
+                </Typography>
+              </Box>
+            </Tooltip>
           )}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
@@ -474,8 +488,11 @@ export default function TLABoard() {
   const fetchTickets = async () => {
     try {
       const res = await api.get('/tickets');
+      // "Other"-category tickets have no department (department_id === null) and
+      // are never auto-routed — per client direction, these are visible to every
+      // TLA's board regardless of department, not hidden behind a routing step.
       const filtered = res.data.filter(t =>
-        t.department_id != null &&
+        t.department_id == null ||
         (user?.department_id ? t.department_id === user.department_id : true)
       );
       setTickets(filtered);
@@ -491,9 +508,13 @@ export default function TLABoard() {
   const handleClaim = async (ticketId) => {
     setClaimingId(ticketId);
     setError('');
+    // Optimistic update must mirror the backend's auto-progress-on-claim
+    // (PATCH /tickets/:id sets ticket_status to 'in_progress' when a claim
+    // has no explicit status) — otherwise the card shows as claimed but
+    // stays sitting in the Open column until the refetch below lands.
     setTickets(prev =>
       prev.map(t => t.ticket_id === ticketId
-        ? { ...t, assigned_user_id: user?.id, assignee_name: user?.name }
+        ? { ...t, assigned_user_id: user?.id, assignee_name: user?.name, ticket_status: 'in_progress' }
         : t)
     );
     try {
@@ -502,7 +523,7 @@ export default function TLABoard() {
     } catch (err) {
       setTickets(prev =>
         prev.map(t => t.ticket_id === ticketId
-          ? { ...t, assigned_user_id: null, assignee_name: null }
+          ? { ...t, assigned_user_id: null, assignee_name: null, ticket_status: 'open' }
           : t)
       );
       setError(err.response?.data?.error ?? 'Failed to claim ticket. It may already be claimed.');

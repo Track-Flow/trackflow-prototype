@@ -14,6 +14,7 @@ const TEXT_BRIGHT = '#e3e8f0';
 const BORDER      = 'rgba(148,163,184,0.10)';
 const PAPER       = '#111d2e';
 const PAPER2      = '#0c1422';
+const UNROUTED    = '#8b5e6a';
 
 const STATUS_OPTIONS = ['open', 'in_progress', 'struggling', 'resolved', 'closed'];
 const VALID_STATUS_KEYS = new Set(STATUS_OPTIONS);
@@ -60,10 +61,10 @@ function TableRow({ ticket, onClick, deptColor }) {
       {!hasDept ? (
         <Box sx={{
           display: 'inline-flex', alignItems: 'center', gap: 0.6, px: 1, py: 0.3, borderRadius: 999,
-          bgcolor: 'rgba(122,111,168,0.12)', border: '1px solid rgba(122,111,168,0.25)', width: 'fit-content',
+          bgcolor: `${UNROUTED}18`, border: `1px solid ${UNROUTED}44`, width: 'fit-content',
         }}>
-          <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: '#7a6fa8' }} />
-          <Typography sx={{ fontSize: 11, color: '#7a6fa8', fontWeight: 600 }}>Routing…</Typography>
+          <span className="material-symbols-outlined" style={{ fontSize: 12, color: UNROUTED }}>public</span>
+          <Typography sx={{ fontSize: 11, color: UNROUTED, fontWeight: 700 }}>Unrouted · Open to all</Typography>
         </Box>
       ) : (
         <Box sx={{
@@ -94,8 +95,8 @@ function TableRow({ ticket, onClick, deptColor }) {
 function MobileCard({ ticket, onClick, deptColor }) {
   const s = statusMeta(ticket.ticket_status);
   const hasDept = !!ticket.department_name;
-  const color = hasDept ? deptColor : '#7a6fa8';
-  const label = hasDept ? ticket.department_name : 'Routing…';
+  const color = hasDept ? deptColor : UNROUTED;
+  const label = hasDept ? ticket.department_name : 'Unrouted · Open to all';
 
   return (
     <Box onClick={onClick} sx={{
@@ -118,8 +119,9 @@ function MobileCard({ ticket, onClick, deptColor }) {
         {ticket.ticket_title}
       </Typography>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
-        <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: color }} />
-        <Typography sx={{ fontSize: 11.5, color }}>{label}</Typography>
+        {!hasDept && <span className="material-symbols-outlined" style={{ fontSize: 11, color: UNROUTED }}>public</span>}
+        {hasDept && <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: color }} />}
+        <Typography sx={{ fontSize: 11.5, color, fontWeight: hasDept ? 400 : 700 }}>{label}</Typography>
       </Box>
       <Typography sx={{ fontSize: 11.5, color: TEXT_DIM }}>
         Updated {timeAgo(ticket.updated_at ?? ticket.created_at)}
@@ -137,6 +139,7 @@ export default function ManagerAllTickets() {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlStatus = searchParams.get('status');
   const initialStatus = VALID_STATUS_KEYS.has(urlStatus) ? urlStatus : 'all';
+  const urlDept = searchParams.get('dept'); // 'unrouted' | department_id string | null
 
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -144,9 +147,12 @@ export default function ManagerAllTickets() {
 
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState(initialStatus);
-  const [deptFilter,   setDeptFilter]   = useState('all');
+  const [deptFilter,   setDeptFilter]   = useState(urlDept ?? 'all');
 
   useEffect(() => {
+    // GET /tickets returns everything to the manager (no department scoping),
+    // including tickets with department_id = NULL — "Other"-category tickets
+    // are never auto-routed, so they arrive here as-is, open to every TLA.
     api.get('/tickets')
       .then(res => setTickets(res.data))
       .catch(err => setError(err.response?.data?.error ?? 'Failed to load tickets.'))
@@ -159,6 +165,14 @@ export default function ManagerAllTickets() {
     const next = new URLSearchParams(searchParams);
     if (key === 'all') next.delete('status');
     else next.set('status', key);
+    setSearchParams(next);
+  };
+
+  const selectDept = (key) => {
+    setDeptFilter(key);
+    const next = new URLSearchParams(searchParams);
+    if (key === 'all') next.delete('dept');
+    else next.set('dept', String(key));
     setSearchParams(next);
   };
 
@@ -177,12 +191,14 @@ export default function ManagerAllTickets() {
 
   const deptColorFor = (id) => departments.find(d => d.id === id)?.color ?? '#94a3b8';
 
+  const unroutedCount = tickets.filter(t => t.department_id == null).length;
+
   const displayed = tickets.filter(t => {
     const matchStatus = statusFilter === 'all' || t.ticket_status === statusFilter;
     const matchDept =
       deptFilter === 'all' ||
       (deptFilter === 'unrouted' && t.department_id == null) ||
-      t.department_id === deptFilter;
+      String(t.department_id) === String(deptFilter);
     const q = search.toLowerCase();
     const matchSearch = !q
       || t.ticket_title?.toLowerCase().includes(q)
@@ -207,6 +223,14 @@ export default function ManagerAllTickets() {
         </Typography>
         <Typography sx={{ fontSize: 13, color: TEXT_DIM, mt: 0.5 }}>
           {tickets.length} total · {displayed.length} shown
+          {unroutedCount > 0 && (
+            <>
+              {' · '}
+              <Box component="span" sx={{ color: UNROUTED, fontWeight: 700 }}>
+                {unroutedCount} unrouted
+              </Box>
+            </>
+          )}
         </Typography>
       </Box>
 
@@ -242,12 +266,12 @@ export default function ManagerAllTickets() {
           </Select>
         </FormControl>
         <FormControl size="small" sx={{ flex: '1 1 150px', minWidth: 0 }}>
-          <Select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} sx={selectSx}>
+          <Select value={deptFilter} onChange={e => selectDept(e.target.value)} sx={selectSx}>
             <MenuItem value="all">All departments</MenuItem>
             <MenuItem value="unrouted">
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: '#7a6fa8' }} />
-                Unrouted
+                <span className="material-symbols-outlined" style={{ fontSize: 14, color: UNROUTED }}>public</span>
+                Unrouted {unroutedCount > 0 && `(${unroutedCount})`}
               </Box>
             </MenuItem>
             {departments.map(d => (
@@ -262,7 +286,7 @@ export default function ManagerAllTickets() {
         </FormControl>
         {(search || statusFilter !== 'all' || deptFilter !== 'all') && (
           <Button size="small"
-            onClick={() => { setSearch(''); selectStatus('all'); setDeptFilter('all'); }}
+            onClick={() => { setSearch(''); selectStatus('all'); selectDept('all'); }}
             sx={{ fontSize: 12, color: TEXT_DIM, whiteSpace: 'nowrap' }}
           >
             Clear

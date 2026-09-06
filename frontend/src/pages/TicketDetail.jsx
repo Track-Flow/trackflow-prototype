@@ -121,6 +121,19 @@ function NoteDialog({ open, mode, onConfirm, onCancel }) {
       confirmIcon: "restart_alt",
     },
 
+    "flag-department": {
+  icon: "public",
+  iconColor: "#8b5e6a",
+  title: "Flag Wrong Department",
+  helper:
+    "Explain why this ticket doesn't belong in its current department. It will be unassigned and made visible to every TLA until the right team picks it up.",
+  placeholder:
+    "Reason (e.g. this is a software issue, not hardware)…",
+  confirmLabel: "Flag wrong department",
+  confirmColor: "error",
+  confirmIcon: "public",
+},
+
     escalate: {
       icon: "campaign",
       iconColor: "#e5484d",
@@ -604,25 +617,27 @@ const handleDownloadAttachment = async () => {
   }
 };
 
-  const handleNoteConfirm = async (notes) => {
-    const mode = noteDialog.mode;
-    setNoteDialog({ open: false, mode: null });
-    try {
-      if (mode === "reopen") {
-        await api.post(`/tickets/${id}/reopen`, { reason: notes });
-      } else if (mode === "escalate") {
-        await api.post(`/tickets/${id}/escalate`, { reason: notes });
-      } else {
-        await api.patch(`/tickets/${id}`, {
-          ticket_status: mode,
-          resolution_notes: notes,
-        });
-      }
-      fetchTicket();
-    } catch (err) {
-      setError(err.response?.data?.error ?? "Failed to update ticket.");
+ const handleNoteConfirm = async (notes) => {
+  const mode = noteDialog.mode;
+  setNoteDialog({ open: false, mode: null });
+  try {
+    if (mode === "reopen") {
+      await api.post(`/tickets/${id}/reopen`, { reason: notes });
+    } else if (mode === "escalate") {
+      await api.post(`/tickets/${id}/escalate`, { reason: notes });
+    } else if (mode === "flag-department") {
+      await api.post(`/tickets/${id}/flag-department`, { reason: notes });
+    } else {
+      await api.patch(`/tickets/${id}`, {
+        ticket_status: mode,
+        resolution_notes: notes,
+      });
     }
-  };
+    fetchTicket();
+  } catch (err) {
+    setError(err.response?.data?.error ?? "Failed to update ticket.");
+  }
+};
 
   const patchStatus = async (newStatus) => {
     try {
@@ -720,6 +735,11 @@ const handleDownloadAttachment = async () => {
 
   const hasFeedback = !!ticket.feedback_id;
 const canSubmitFeedback = user?.role === 'end_user' && ticket.user_id === user?.id && !hasFeedback;
+
+const canFlagDepartment =
+  !isResolved && !isClosed &&
+  ticket.department_id != null &&
+  ((isTLA && isAssignedToMe) || isManager || isAdmin);
 
   const canClaim = isTLA && !isClaimed && !isResolved && !isClosed;
   const canEscalate =
@@ -1178,6 +1198,59 @@ const canSubmitFeedback = user?.role === 'end_user' && ticket.user_id === user?.
               </Button>
             </Card>
           )}
+
+
+          {canFlagDepartment && (
+  <Card
+    sx={{
+      p: 2.5,
+      mb: 2,
+      bgcolor: PAPER,
+      border: "1px solid rgba(139,94,106,0.35)",
+    }}
+  >
+    <Typography
+      sx={{
+        fontSize: 11,
+        color: TEXT_MUTED,
+        fontWeight: 700,
+        letterSpacing: "0.1em",
+        textTransform: "uppercase",
+        mb: 1,
+      }}
+    >
+      Actions
+    </Typography>
+    <Typography
+      sx={{
+        fontSize: 12.5,
+        color: TEXT_DIM,
+        mb: 1.5,
+        lineHeight: 1.5,
+      }}
+    >
+      Sent to the wrong department? Flag it — the ticket will be unassigned and opened up to every TLA until the right team claims it.
+    </Typography>
+    <Button
+      variant="contained"
+      onClick={() => setNoteDialog({ open: true, mode: "flag-department" })}
+      startIcon={
+        <span className="material-symbols-outlined" style={{ fontSize: 15 }}>
+          public
+        </span>
+      }
+      sx={{
+        fontSize: 12,
+        fontWeight: 700,
+        bgcolor: "#8b5e6a",
+        color: "#fff",
+        "&:hover": { bgcolor: "#7a4f5a" },
+      }}
+    >
+      Flag wrong department
+    </Button>
+  </Card>
+)}
 
        
         </Box>

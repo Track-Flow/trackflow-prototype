@@ -251,6 +251,145 @@ router.post('/:id/escalate', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── POST /api/tickets/:id/flag-department ────────────────────────────────────
+// TLA, MSS Manager, or Admin flags a ticket as sent to the wrong department.
+// Requires a short reason. Mechanism: move the ticket to the "Other" category
+// (same category the end-user picks when nothing fits), which per the
+// existing category rules clears department_id to NULL — this is exactly the
+// same "open to any TLA" state as a ticket submitted under Other, reusing all
+// existing visibility plumbing rather than inventing a new status/flag.
+// Also unassigns the current TLA and resets ticket_status back to 'open'
+// (clearing resolved_at too) — whatever progress had been made under the
+// wrong department doesn't carry over, since the right team is starting
+// fresh. Blocked once resolved/closed, and blocked if it's already unrouted
+// (nothing to flag — it's already open to everyone).
+
+router.post('/:id/flag-department', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+  const requesting_user_role = req.user.role;
+  const requesting_user_id   = req.user.id;
+
+  if (!['tla', 'mss_manager', 'admin'].includes(requesting_user_role)) {
+    return res.status(403).json({ error: 'Only TLAs, MSS Managers, or Admins can flag a ticket as wrong department.' });
+  }
+
+  if (!reason || !reason.trim()) {
+    return res.status(400).json({ error: 'A reason is required to flag a ticket as wrong department.' });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [[ticket]] = await conn.query(
+      `SELECT ticket_id, ticket_status, ticket_title, department_id, category_id, assigned_user_id
+       FROM ticket WHERE ticket_id = ? FOR UPDATE`,
+      [id]
+    );
+
+    if (!ticket) {
+      await conn.rollback();
+      conn.release();
+      return res.status(404).json({ error: 'Ticket not found.' });
+    }
+
+    if (['resolved', 'closed'].includes(ticket.ticket_status)) {
+      await conn.rollback();
+      conn.release();
+      return res.status(409).json({ error: 'Cannot flag a resolved or closed ticket.' });
+    }
+
+    if (ticket.department_id == null) {
+      await conn.rollback();
+      conn.release();
+      return res.status(409).json({ error: 'This ticket is already unrouted and open to every TLA.' });
+    }
+
+    // A TLA may only flag a ticket that is actually assigned to them —
+    // otherwise anyone could yank tickets out of another TLA's queue.
+    if (requesting_user_role === 'tla' && ticket.assigned_user_id !== requesting_user_id) {
+      await conn.rollback();
+      conn.release();
+      return res.status(403).json({ error: 'You can only flag tickets assigned to you.' });
+    }
+
+    const [[otherCategory]] = await conn.query(
+      `SELECT category_id FROM category WHERE LOWER(category_name) = 'other' LIMIT 1`
+    );
+    if (!otherCategory) {
+      await conn.rollback();
+      conn.release();
+      return res.status(500).json({ error: 'The "Other" category is not configured.' });
+    }
+
+    const oldDepartmentId = ticket.department_id;
+    const oldStatus = ticket.ticket_status;
+
+    await conn.query(
+      `UPDATE ticket
+       SET category_id = ?,
+           department_id = NULL,
+           assigned_user_id = NULL,
+           ticket_status = 'open',
+           resolved_at = NULL,
+           ticket_updated_at = NOW()
+       WHERE ticket_id = ?`,
+      [otherCategory.category_id, id]
+    );
+
+    await conn.query(
+      `INSERT INTO ticket_status_log (ticket_id, old_status, new_status, changed_by, note)
+       VALUES (?, ?, 'open', ?, ?)`,
+      [id, oldStatus, requesting_user_id,
+       `Flagged as wrong department by ${requesting_user_id}, reset to open: ${reason.trim()}`]
+    );
+
+    await conn.commit();
+
+    // Tell the manager(s) of the department it's leaving, and the TLA it was
+    // unassigned from (if that wasn't the person doing the flagging).
+    notifyRole({
+      role: 'mss_manager',
+      departmentId: oldDepartmentId,
+      ticketId: id,
+      message: `Ticket #${id} "${ticket.ticket_title}" was flagged as wrong department by ${requesting_user_id}, reset to open, and is now open to any TLA. Reason: ${reason.trim()}`,
+    });
+    if (ticket.assigned_user_id && ticket.assigned_user_id !== requesting_user_id) {
+      notify({
+        userId: ticket.assigned_user_id,
+        ticketId: id,
+        message: `Ticket #${id} "${ticket.ticket_title}" was flagged as wrong department, reset to open, and removed from your queue.`,
+      });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT
+        t.*,
+        u.user_name,
+        d.department_name,
+        c.category_name,
+        a.user_name AS assignee_name,
+        a.user_id   AS assignee_id
+       FROM ticket t
+       LEFT JOIN user       u ON t.user_id         = u.user_id
+       LEFT JOIN department d ON t.department_id    = d.department_id
+       LEFT JOIN category   c ON t.category_id      = c.category_id
+       LEFT JOIN user       a ON t.assigned_user_id = a.user_id
+       WHERE t.ticket_id = ?`,
+      [id]
+    );
+
+    return res.status(200).json({ message: 'Ticket flagged as wrong department, reset to open, and is now open to any TLA.', ticket: rows[0] });
+  } catch (err) {
+    await conn.rollback();
+    console.error('Flag-department error:', err);
+    return res.status(500).json({ error: 'Internal server error.' });
+  } finally {
+    conn.release();
+  }
+});
+
 // get ticket lifecycle / status history
 router.get("/:id/history", authenticateToken, async (req, res) => {
   const { id } = req.params;

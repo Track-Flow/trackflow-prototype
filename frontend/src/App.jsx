@@ -10,6 +10,9 @@ import EndUserHome  from './pages/EndUserHome';
 import HelpdeskHome from './pages/HelpdeskHome';
 import HelpdeskAllTickets from './pages/HelpDeskAllTickets';
 import AccessManagement from './pages/AccessManagement';
+import ManageCategoriesDepartments from './pages/ManageCategoriesDepartments';
+import ManagerDepartments from './pages/ManagerDepartments';
+import ManagerTLAs from './pages/ManagerTla';
 import Stub         from './pages/Stub';
 import SubmitTicket  from './pages/SubmitTicket';
 import TicketDetail  from './pages/TicketDetail';
@@ -74,9 +77,9 @@ export default function App() {
           {/* MSS Manager */}
           <Route path="/manager"         element={<PrivateRoute roles={['mss_manager']}><ManagerHome /></PrivateRoute>} />
           <Route path="/manager/tickets" element={<PrivateRoute roles={['mss_manager']}><ManagerAllTickets/></PrivateRoute>} />
-          <Route path="/manager/depts"   element={<PrivateRoute roles={['mss_manager']}><Stub title="Departments" icon="groups" /></PrivateRoute>} />
+          <Route path="/manager/depts"   element={<PrivateRoute roles={['mss_manager']}><ManagerDepartments /></PrivateRoute>} />
           <Route path="/manager/reports" element={<PrivateRoute roles={['mss_manager']}><ManagerReports /></PrivateRoute>} />
-          <Route path="/manager/tlas"    element={<PrivateRoute roles={['mss_manager']}><Stub title="TLAs" icon="badge" /></PrivateRoute>} />
+          <Route path="/manager/tlas"    element={<PrivateRoute roles={['mss_manager']}><ManagerTLAs /></PrivateRoute>} />
           <Route path="/manager/inbox"   element={<PrivateRoute roles={['mss_manager']}><NotificationsInbox /></PrivateRoute>} />
           <Route path="/manager/profile" element={<PrivateRoute roles={['mss_manager']}><Profile /></PrivateRoute>} />
 
@@ -93,7 +96,7 @@ export default function App() {
           <Route path="/helpdesk" element={<PrivateRoute roles={['admin']}><HelpdeskAllTickets /></PrivateRoute>} />
           <Route path="/helpdesk/users" element={<PrivateRoute roles={['admin']}><AccessManagement /></PrivateRoute>} />
 
-          <Route path="/helpdesk/cats"    element={<PrivateRoute roles={['admin']}><Stub title="Categories" icon="category" /></PrivateRoute>} />
+          <Route path="/helpdesk/cats"    element={<PrivateRoute roles={['admin']}><ManageCategoriesDepartments /></PrivateRoute>} />
           <Route path="/helpdesk/audit"   element={<PrivateRoute roles={['admin']}><Stub title="Audit log" icon="shield" /></PrivateRoute>} />
           <Route path="/helpdesk/inbox"   element={<PrivateRoute roles={['admin']}><NotificationsInbox /></PrivateRoute>} />
           <Route path="/helpdesk/profile" element={<PrivateRoute roles={['admin']}><Profile /></PrivateRoute>} />
