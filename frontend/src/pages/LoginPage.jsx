@@ -10,7 +10,7 @@ import {
   Divider,
   Alert,
 } from "@mui/material";
-import axios from "axios";
+import api from '../helpers/api.js'
 import { useNavigate } from 'react-router-dom';
 
 const LOGO_BLUE = "#2ec8ff";
@@ -103,7 +103,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await axios.post("http://localhost:3000/api/auth/login", {
+      const res = await api.post("/auth/login", {
         user_id: userId,
         password,
       });

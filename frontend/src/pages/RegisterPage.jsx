@@ -4,7 +4,7 @@ import {
   InputAdornment, IconButton, Divider, Alert,
 } from '@mui/material';
 
-import axios from 'axios';
+import api from '../helpers/api.js';
 import { useNavigate } from 'react-router-dom';
 
 const LOGO_BLUE = '#2ec8ff';
@@ -102,7 +102,7 @@ export default function RegisterPage() {
   setLoading(true);
 
   try {
-    await axios.post('/api/auth/register', {
+    await api.post('/auth/register', {
       user_id:  userId.trim(),
       user_name:     `${firstName.trim()} ${lastName.trim()}`,
       user_email:    email.trim().toLowerCase(),
