@@ -606,7 +606,9 @@ export default function ManagerReports() {
   const generated = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' });
 
   useEffect(() => {
-    api.get('/tickets')
+    // Reports analyse every department, so they use the all-departments endpoint
+    // rather than the department-scoped GET /tickets.
+    api.get('/tickets/reports')
       .then(res => setTickets(res.data))
       .catch(err => setError(err.response?.data?.error ?? 'Failed to load tickets.'))
       .finally(() => setLoading(false));

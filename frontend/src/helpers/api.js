@@ -14,7 +14,14 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   res => res,
   err => {
-    if (err.response?.status === 401 || err.response?.status === 403) {
+    // Only a bad/expired token should log the user out. Other 403s are normal
+    // permission answers (e.g. "already claimed", "not your department") and
+    // must reach the screen as an error message instead.
+    const status = err.response?.status;
+    const tokenRejected =
+      status === 401 ||
+      (status === 403 && err.response?.data?.error === 'Invalid or expired token.');
+    if (tokenRejected) {
       localStorage.removeItem('tf_token');
       localStorage.removeItem('tf_user');
       window.location.href = '/login';

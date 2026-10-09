@@ -2,7 +2,17 @@ const pool = require("../config/db");
 const router = require("express").Router();
 const { authenticateToken } = require("../middleware/auth");
 const { notify, notifyRole } = require("../services/notifyService");
-const upload = require('../middleware/upload');
+const { singleFile } = require('../middleware/upload');
+const {
+  sameId,
+  resolveUser,
+  scopeClause,
+  canViewTicket,
+  canOpenTicket,
+  canTlaClaim,
+  canModifyTicket,
+  checkTransition,
+} = require("../services/ticketAccess");
 
 const path = require('path');
 const fs = require('fs');
@@ -96,9 +106,10 @@ router.get('/:id/attachment/download', authenticateToken, async (req, res) => {
     );
     if (!att) return res.status(404).json({ error: 'No attachment found for this ticket.' });
 
-    const isOwner = req.user.role === 'end_user' && att.user_id === req.user.id;
-    const isAssignedTla = req.user.role === 'tla' && att.assigned_user_id === req.user.id;
-    const isPrivileged = req.user.role === 'mss_manager' || req.user.role === 'admin';
+    const user = await resolveUser(req.user);
+    const isOwner = user.role === 'end_user' && sameId(att.user_id, user.id);
+    const isAssignedTla = user.role === 'tla' && sameId(att.assigned_user_id, user.id);
+    const isPrivileged = user.role === 'admin' || user.role === 'mss_manager';
     if (!isOwner && !isAssignedTla && !isPrivileged) {
       return res.status(403).json({ error: 'You do not have permission to view this attachment.' });
     }
@@ -115,28 +126,46 @@ router.get('/:id/attachment/download', authenticateToken, async (req, res) => {
   }
 });
 
-//get all tickets
+const TICKET_LIST_SQL = `
+  SELECT
+    t.*,
+    u.user_name,
+    d.department_name,
+    a.user_name  AS assignee_name,
+    a.user_id    AS assignee_id
+  FROM ticket t
+  LEFT JOIN user u       ON t.user_id          = u.user_id
+  LEFT JOIN department d ON t.department_id     = d.department_id
+  LEFT JOIN user a       ON t.assigned_user_id  = a.user_id`;
+
+// get all tickets the caller is allowed to see (UC06 step 2)
 router.get('/', authenticateToken, async (req, res) => {
   try {
-
     await runEscalationSweep(pool);
 
-
-    const [rows] = await pool.query(`
-      SELECT
-        t.*,
-        u.user_name,
-        d.department_name,
-        a.user_name  AS assignee_name,
-        a.user_id    AS assignee_id
-      FROM ticket t
-      LEFT JOIN user u       ON t.user_id          = u.user_id
-      LEFT JOIN department d ON t.department_id     = d.department_id
-      LEFT JOIN user a       ON t.assigned_user_id  = a.user_id
-    `);
+    const user = await resolveUser(req.user);
+    const scope = scopeClause(user, 't');
+    const [rows] = await pool.query(`${TICKET_LIST_SQL} WHERE ${scope.sql}`, scope.params);
     res.json(rows);
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// GET /api/tickets/reports — all departments, for manager reporting only.
+// Reports analyse the whole MSS, so this is the one place a manager sees
+// tickets outside their own department. Must be registered before /:id.
+router.get('/reports', authenticateToken, async (req, res) => {
+  const user = await resolveUser(req.user);
+  if (!['mss_manager', 'admin'].includes(user.role)) {
+    return res.status(403).json({ error: 'Only MSS Managers or Admins can view reports.' });
+  }
+  try {
+    const [rows] = await pool.query(TICKET_LIST_SQL);
+    res.json(rows);
+  } catch (err) {
+    console.error('Reports fetch error:', err);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
@@ -145,6 +174,7 @@ router.get('/', authenticateToken, async (req, res) => {
 router.get("/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
+    const user = await resolveUser(req.user);
     const [rows] = await pool.query(
       `SELECT
         t.*,
@@ -173,6 +203,9 @@ router.get("/:id", authenticateToken, async (req, res) => {
     );
     if (rows.length === 0) {
       return res.status(404).json({ error: "Ticket not found" });
+    }
+    if (!canOpenTicket(user, rows[0])) {
+      return res.status(403).json({ error: "You do not have permission to view this ticket." });
     }
     res.json(rows[0]);
   } catch (err) {
@@ -207,19 +240,22 @@ router.post('/:id/escalate', authenticateToken, async (req, res) => {
 
     if (!ticket) {
       await conn.rollback();
-      conn.release();
       return res.status(404).json({ error: 'Ticket not found.' });
+    }
+
+    const user = await resolveUser(req.user);
+    if (!canViewTicket(user, ticket)) {
+      await conn.rollback();
+      return res.status(403).json({ error: 'You do not have permission to escalate this ticket.' });
     }
 
     if (['resolved', 'closed'].includes(ticket.ticket_status)) {
       await conn.rollback();
-      conn.release();
       return res.status(409).json({ error: 'Cannot escalate a resolved or closed ticket.' });
     }
 
     if (ticket.ticket_escalated) {
       await conn.rollback();
-      conn.release();
       return res.status(409).json({ error: 'This ticket has already been escalated.' });
     }
 
@@ -290,27 +326,29 @@ router.post('/:id/flag-department', authenticateToken, async (req, res) => {
 
     if (!ticket) {
       await conn.rollback();
-      conn.release();
       return res.status(404).json({ error: 'Ticket not found.' });
+    }
+
+    const user = await resolveUser(req.user);
+    if (!canViewTicket(user, ticket)) {
+      await conn.rollback();
+      return res.status(403).json({ error: 'You do not have permission to flag this ticket.' });
     }
 
     if (['resolved', 'closed'].includes(ticket.ticket_status)) {
       await conn.rollback();
-      conn.release();
       return res.status(409).json({ error: 'Cannot flag a resolved or closed ticket.' });
     }
 
     if (ticket.department_id == null) {
       await conn.rollback();
-      conn.release();
       return res.status(409).json({ error: 'This ticket is already unrouted and open to every TLA.' });
     }
 
     // A TLA may only flag a ticket that is actually assigned to them —
     // otherwise anyone could yank tickets out of another TLA's queue.
-    if (requesting_user_role === 'tla' && ticket.assigned_user_id !== requesting_user_id) {
+    if (requesting_user_role === 'tla' && !sameId(ticket.assigned_user_id, requesting_user_id)) {
       await conn.rollback();
-      conn.release();
       return res.status(403).json({ error: 'You can only flag tickets assigned to you.' });
     }
 
@@ -319,7 +357,6 @@ router.post('/:id/flag-department', authenticateToken, async (req, res) => {
     );
     if (!otherCategory) {
       await conn.rollback();
-      conn.release();
       return res.status(500).json({ error: 'The "Other" category is not configured.' });
     }
 
@@ -395,11 +432,15 @@ router.get("/:id/history", authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
     const [ticketRows] = await pool.query(
-      "SELECT ticket_id FROM ticket WHERE ticket_id = ?",
+      "SELECT ticket_id, user_id, assigned_user_id, department_id FROM ticket WHERE ticket_id = ?",
       [id]
     );
     if (ticketRows.length === 0) {
       return res.status(404).json({ error: "Ticket not found" });
+    }
+    const user = await resolveUser(req.user);
+    if (!canOpenTicket(user, ticketRows[0])) {
+      return res.status(403).json({ error: "You do not have permission to view this ticket." });
     }
 
     const [rows] = await pool.query(
@@ -426,7 +467,7 @@ router.get("/:id/history", authenticateToken, async (req, res) => {
 });
 
 
-router.post("/", authenticateToken, upload.single('file'), async (req, res) => {
+router.post("/", authenticateToken, singleFile('file'), async (req, res) => {
   const { ticket_title, ticket_description, category_id } = req.body;
   const user_id = req.user.id; // from JWT payload
 
@@ -600,8 +641,14 @@ router.post("/:id/reopen", authenticateToken, async (req, res) => {
       return res.status(409).json({ error: "Only resolved or closed tickets can be reopened." });
     }
 
+    const user = await resolveUser(req.user);
+    if (requesting_user_role === "mss_manager" && !canViewTicket(user, ticket)) {
+      await conn.rollback();
+      return res.status(403).json({ error: "You do not have permission to reopen this ticket." });
+    }
+
     // TLA can only reopen tickets they were assigned to
-    if (requesting_user_role === "tla" && ticket.assigned_user_id !== requesting_user_id) {
+    if (requesting_user_role === "tla" && !sameId(ticket.assigned_user_id, requesting_user_id)) {
       await conn.rollback();
       return res.status(403).json({ error: "You can only reopen tickets assigned to you." });
     }
@@ -740,9 +787,9 @@ router.patch("/:id", authenticateToken, async (req, res) => {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
-    // --- Check ticket exists ---
+    // --- Check ticket exists (row-locked so two simultaneous claims can't both win) ---
     const [tickets] = await conn.query(
-      "SELECT * FROM ticket WHERE ticket_id = ?",
+      "SELECT * FROM ticket WHERE ticket_id = ? FOR UPDATE",
       [id]
     );
     if (tickets.length === 0) {
@@ -752,10 +799,11 @@ router.patch("/:id", authenticateToken, async (req, res) => {
 
     const ticket = tickets[0];
     const oldStatus = ticket.ticket_status;
+    const user = await resolveUser(req.user, conn);
 
     // --- Authorisation ---
     if (requesting_user_role === "end_user") {
-      if (ticket.user_id !== requesting_user_id) {
+      if (!sameId(ticket.user_id, requesting_user_id)) {
         await conn.rollback();
         return res.status(403).json({ error: "Not authorised to update this ticket." });
       }
@@ -768,16 +816,93 @@ router.patch("/:id", authenticateToken, async (req, res) => {
     // --- Determine if this request is a claim (assigning a TLA) ---
     const isClaim = requesting_user_role !== "end_user" && assignee_id !== undefined;
 
+    // Check order below is deliberate: state conflicts and bad input are
+    // reported before "not yours", so the caller gets the most useful reason.
+
+    // UC04: a resolved/closed ticket can never be claimed (409).
     if (isClaim && ["resolved", "closed"].includes(ticket.ticket_status)) {
       await conn.rollback();
       return res.status(409).json({ error: "Cannot claim a resolved or closed ticket." });
     }
 
-    // Auto-progress: claiming with no explicit status moves the ticket to in_progress
-    let effectiveStatus = ticket_status;
-    if (isClaim && ticket_status === undefined) {
+    // Staff must have the ticket in scope at all (UC06 A3).
+    if (requesting_user_role !== "end_user" && !canViewTicket(user, ticket)) {
+      await conn.rollback();
+      return res.status(403).json({ error: "You do not have permission to update this ticket." });
+    }
+
+    // The assignee must be a real TLA (404) before any claim rules apply.
+    if (isClaim && assignee_id !== null) {
+      const [assigneeRows] = await conn.query(
+        "SELECT user_id FROM user WHERE user_id = ? AND user_role = 'tla'",
+        [assignee_id]
+      );
+      if (assigneeRows.length === 0) {
+        await conn.rollback();
+        return res.status(404).json({ error: "Assigned TLA not found." });
+      }
+    }
+
+    if (isClaim && requesting_user_role === "tla" && assignee_id !== null) {
+      // TLAs self-claim only — they can't hand tickets to other people.
+      if (!sameId(assignee_id, requesting_user_id)) {
+        await conn.rollback();
+        return res.status(403).json({ error: "TLAs can only claim tickets for themselves." });
+      }
+      // UC04 A2: department must match (or be an unrouted "Other" ticket).
+      if (!canTlaClaim(user, ticket)) {
+        await conn.rollback();
+        return res.status(403).json({ error: "You can only claim tickets routed to your own department." });
+      }
+      // UC04 A1: no silent overwrite of someone else's claim.
+      if (ticket.assigned_user_id != null && !sameId(ticket.assigned_user_id, requesting_user_id)) {
+        await conn.rollback();
+        return res.status(409).json({ error: "This ticket has already been claimed by another TLA." });
+      }
+    }
+
+    // Auto-progress: claiming an open ticket with no explicit status moves it to in_progress
+    // End users can't change status at all — ignore it entirely so it can't
+    // stamp resolved_at or write a status-log row as a side effect.
+    let effectiveStatus = requesting_user_role === "end_user" ? undefined : ticket_status;
+    if (isClaim && ticket_status === undefined && oldStatus === "open" && assignee_id !== null) {
       effectiveStatus = "in_progress";
     }
+
+    const effectiveAssigneeId = isClaim ? assignee_id : ticket.assigned_user_id;
+
+    if (requesting_user_role !== "end_user") {
+      // UC05 A4: resolved/closed tickets are locked except for resolved → closed.
+      const isClosingResolved = oldStatus === "resolved" && effectiveStatus === "closed";
+      if (["resolved", "closed"].includes(oldStatus) && !isClosingResolved) {
+        await conn.rollback();
+        return res.status(409).json({
+          error: `This ticket is ${oldStatus} and can no longer be updated this way. Use the reopen action instead.`,
+        });
+      }
+
+      // UC05 step 4 / A1 + UC03 step 10: valid, sequential move with a note when resolving.
+      if (effectiveStatus !== undefined) {
+        const problem = checkTransition(oldStatus, effectiveStatus, {
+          hasAssignee: effectiveAssigneeId != null,
+          resolutionNote: resolution_notes,
+        });
+        if (problem) {
+          await conn.rollback();
+          return res.status(problem.status).json({ error: problem.error });
+        }
+      }
+
+      // UC05 A3: only the assigned TLA (or a manager/admin in scope) may change a ticket.
+      // A claim is the one exception — that's how a TLA becomes the assignee.
+      if (!canModifyTicket(user, ticket, effectiveAssigneeId)) {
+        await conn.rollback();
+        return res.status(403).json({ error: "Only the assigned TLA, a manager, or an admin can update this ticket." });
+      }
+    }
+
+    // Closing keeps the original resolution note; the close reason only goes in the status log.
+    const keepResolutionNote = oldStatus === "resolved" && effectiveStatus === "closed";
 
     // --- Build dynamic update ---
     const fields = [];
@@ -803,20 +928,15 @@ router.patch("/:id", authenticateToken, async (req, res) => {
       fields.push('resolved_at = NULL'); // reopened — reset it
     }
 
-    if (resolution_notes !== undefined) {
+    if (resolution_notes !== undefined && !keepResolutionNote) {
       fields.push("resolution_note = ?");
-      values.push(resolution_notes);
+      values.push(typeof resolution_notes === "string" ? resolution_notes.trim() : resolution_notes);
     }
 
     // Only tla / mss_manager / admin can update these fields
     if (requesting_user_role !== "end_user") {
 
       if (effectiveStatus !== undefined) {
-        const validStatuses = ["open", "in_progress", "struggling", "resolved", "closed"];
-        if (!validStatuses.includes(effectiveStatus)) {
-          await conn.rollback();
-          return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
-        }
         fields.push("ticket_status = ?");
         values.push(effectiveStatus);
       }

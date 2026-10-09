@@ -179,7 +179,9 @@ function computeLabel(resolvedAt) {
   return `Closes in ${secs}s`;
 }
 
-function ClosesInBadge({ ticketId, resolvedAt, onAutoClosed }) {
+// canAutoClose: only the assigned TLA's board fires the close request — the
+// API rejects status changes from anyone else, so other boards just show the countdown.
+function ClosesInBadge({ ticketId, resolvedAt, onAutoClosed, canAutoClose = true }) {
   const [label, setLabel] = useState(() => computeLabel(resolvedAt));
   const firedRef = useRef(false);
 
@@ -189,7 +191,7 @@ function ClosesInBadge({ ticketId, resolvedAt, onAutoClosed }) {
 
     const tick = async () => {
       setLabel(computeLabel(resolvedAt));
-      if (!resolvedAt || firedRef.current) return;
+      if (!resolvedAt || firedRef.current || !canAutoClose) return;
       const closeAt = new Date(resolvedAt).getTime() + AUTO_CLOSE_MS;
       if (Date.now() >= closeAt) {
         firedRef.current = true;
@@ -210,7 +212,7 @@ function ClosesInBadge({ ticketId, resolvedAt, onAutoClosed }) {
 
     const id = setInterval(tick, 500);
     return () => clearInterval(id);
-  }, [resolvedAt, ticketId, onAutoClosed]);
+  }, [resolvedAt, ticketId, onAutoClosed, canAutoClose]);
 
   if (!label) return null;
   return (
@@ -316,7 +318,7 @@ function TicketCard({ ticket, onDragStart, onClick, onClaim, onAutoClosed, isDra
               <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#475569', fontVariationSettings: "'FILL' 1" }}>lock</span>
             </Tooltip>
           ) : isResolved ? (
-            <ClosesInBadge ticketId={ticket.ticket_id} resolvedAt={ticket.resolved_at} onAutoClosed={onAutoClosed} />
+            <ClosesInBadge ticketId={ticket.ticket_id} resolvedAt={ticket.resolved_at} onAutoClosed={onAutoClosed} canAutoClose={isOwned} />
           ) : !isClaimed ? (
             <ClaimFirstBadge />
           ) :   (isOtherOwned || isOwned) ? (
@@ -579,11 +581,12 @@ export default function TLABoard() {
       if (notes) body.resolution_notes = notes;
       await api.patch(`/tickets/${ticket.ticket_id}`, body);
       fetchTickets();
-    } catch {
+    } catch (err) {
       setTickets(prev =>
         prev.map(t => t.ticket_id === ticket.ticket_id ? { ...t, ticket_status: prevStatus } : t)
       );
-      setError('Failed to update task status.');
+      // Surface the API's reason (e.g. "Cannot move a ticket from open to resolved…")
+      setError(err.response?.data?.error ?? 'Failed to update task status.');
     }
   };
 

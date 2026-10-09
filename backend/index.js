@@ -43,7 +43,20 @@ app.use('/api/categories', authenticateToken, categoriesRoutes);
 app.use('/api/users', authenticateToken, userRoutes);
 app.use('/api/notifications', authenticateToken, notificationRoutes);
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+// Last-resort error handler: anything that reaches here (bad JSON body,
+// unexpected throw) comes back as clean JSON, never Express's HTML stack trace.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({ error: status >= 500 ? 'Internal server error.' : err.message });
 });
+
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
+
+module.exports = app;

@@ -20,11 +20,41 @@ const storage = multer.diskStorage({
   },
 });
 
+const FILE_TYPE_ERROR = 'File type not allowed. Only images, PDF, and plain text files are accepted.';
+
 const fileFilter = (req, file, cb) => {
   if (!ALLOWED_MIME.has(file.mimetype)) {
-    return cb(new Error('File type not allowed. Only images, PDF, and plain text files are accepted.'));
+    const err = new Error(FILE_TYPE_ERROR);
+    err.code = 'INVALID_FILE_TYPE';
+    return cb(err);
   }
   cb(null, true);
 };
 
-module.exports = multer({ storage, fileFilter, limits: { fileSize: MAX_FILE_SIZE } });
+const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_FILE_SIZE } });
+
+// Wraps upload.single() so Multer rejections come back as clean 400 JSON
+// instead of falling through to Express's default HTML error page with a
+// stack trace (TC-ATT-02, TC-ATT-03).
+function singleFile(fieldName) {
+  const handler = upload.single(fieldName);
+  return (req, res, next) => {
+    handler(req, res, (err) => {
+      if (!err) return next();
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ error: 'File is too large. Maximum size is 10MB.' });
+        }
+        return res.status(400).json({ error: `Upload rejected: ${err.message}` });
+      }
+      if (err.code === 'INVALID_FILE_TYPE') {
+        return res.status(400).json({ error: FILE_TYPE_ERROR });
+      }
+      return next(err);
+    });
+  };
+}
+
+module.exports = upload;
+module.exports.singleFile = singleFile;
+module.exports.MAX_FILE_SIZE = MAX_FILE_SIZE;
