@@ -7,7 +7,6 @@ const {
   sameId,
   resolveUser,
   scopeClause,
-  canViewTicket,
   canOpenTicket,
   canTlaClaim,
   canModifyTicket,
@@ -244,7 +243,7 @@ router.post('/:id/escalate', authenticateToken, async (req, res) => {
     }
 
     const user = await resolveUser(req.user);
-    if (!canViewTicket(user, ticket)) {
+    if (!canOpenTicket(user, ticket)) {
       await conn.rollback();
       return res.status(403).json({ error: 'You do not have permission to escalate this ticket.' });
     }
@@ -330,7 +329,7 @@ router.post('/:id/flag-department', authenticateToken, async (req, res) => {
     }
 
     const user = await resolveUser(req.user);
-    if (!canViewTicket(user, ticket)) {
+    if (!canOpenTicket(user, ticket)) {
       await conn.rollback();
       return res.status(403).json({ error: 'You do not have permission to flag this ticket.' });
     }
@@ -468,10 +467,12 @@ router.get("/:id/history", authenticateToken, async (req, res) => {
 
 
 router.post("/", authenticateToken, singleFile('file'), async (req, res) => {
-  const { ticket_title, ticket_description, category_id } = req.body;
+  const ticket_title = typeof req.body.ticket_title === "string" ? req.body.ticket_title.trim() : req.body.ticket_title;
+  const ticket_description = typeof req.body.ticket_description === "string" ? req.body.ticket_description.trim() : req.body.ticket_description;
+  const { category_id } = req.body;
   const user_id = req.user.id; // from JWT payload
 
-  // --- Validation ---
+  // --- Validation --- (trimmed, so spaces alone count as empty)
   if (!ticket_title || !ticket_description || !category_id) {
     return res.status(400).json({
       error: "ticket_title, ticket_description, and category_id are required.",
@@ -639,12 +640,6 @@ router.post("/:id/reopen", authenticateToken, async (req, res) => {
     if (!["resolved", "closed"].includes(oldStatus)) {
       await conn.rollback();
       return res.status(409).json({ error: "Only resolved or closed tickets can be reopened." });
-    }
-
-    const user = await resolveUser(req.user);
-    if (requesting_user_role === "mss_manager" && !canViewTicket(user, ticket)) {
-      await conn.rollback();
-      return res.status(403).json({ error: "You do not have permission to reopen this ticket." });
     }
 
     // TLA can only reopen tickets they were assigned to
@@ -826,7 +821,7 @@ router.patch("/:id", authenticateToken, async (req, res) => {
     }
 
     // Staff must have the ticket in scope at all (UC06 A3).
-    if (requesting_user_role !== "end_user" && !canViewTicket(user, ticket)) {
+    if (requesting_user_role !== "end_user" && !canOpenTicket(user, ticket)) {
       await conn.rollback();
       return res.status(403).json({ error: "You do not have permission to update this ticket." });
     }

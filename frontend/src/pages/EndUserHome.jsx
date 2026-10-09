@@ -152,7 +152,7 @@ export default function EndUserHome() {
                 <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ACCENT, mb: 0.25 }}>Tip</Typography>
                 <Typography sx={{ fontSize: 12, color: TEXT_DIM, lineHeight: 1.5 }}>
                   Choose <strong style={{ color: TEXT_BRIGHT }}>Other</strong> if no category fits —
-                  Help-desk admin will route it for you.
+                  it goes to all departments and the right team will pick it up.”
                 </Typography>
               </Box>
             </Box>

@@ -6,8 +6,8 @@
 // Visibility (UC02 A3, UC06 step 2 / A3):
 //   admin        → every ticket
 //   mss_manager  → own department + "Other" tickets (department_id NULL)
-//                  Exceptions: reports (GET /tickets/reports) and opening a
-//                  single ticket read-only from a report drill-down.
+//                  Exceptions: reports (GET /tickets/reports), and opening or
+//                  acting on any single ticket by id (cross-functional role).
 //   tla          → own department + "Other" tickets
 //   end_user     → only tickets they logged
 //
@@ -92,11 +92,13 @@ function canViewTicket(user, ticket) {
   }
 }
 
-// Read access to a single ticket (detail page, history, attachment).
-// Same as canViewTicket except managers may open any department's ticket,
-// because reports analyse every department and their drill-downs link to
-// individual tickets. This is read-only: changes still use canViewTicket /
-// canModifyTicket, which keep managers to their own department.
+// Access to a single ticket by id (detail, history, attachment, and actions:
+// update, escalate, flag, reopen). Same as canViewTicket except managers may
+// open and act on any department's ticket — managers have cross-functional
+// responsibility (drill-downs from reports, covering for each other). Their
+// *lists* (GET /tickets) stay scoped to their own department + "Other".
+// Actions that need a reason (resolve, struggling, escalate, reopen, flag)
+// still require one, and every status change is written to ticket_status_log.
 function canOpenTicket(user, ticket) {
   if (!ticket) return false;
   if (user.role === 'mss_manager') return true;
@@ -110,11 +112,10 @@ function canTlaClaim(user, ticket) {
   return user.department_id != null && sameId(ticket.department_id, user.department_id);
 }
 
-// Only the assigned TLA, or a manager/admin with the ticket in scope, may
-// change a ticket (UC05 A3).
+// Only the assigned TLA, or any manager/admin, may change a ticket (UC05 A3).
 function canModifyTicket(user, ticket, effectiveAssigneeId) {
   if (user.role === 'admin') return true;
-  if (user.role === 'mss_manager') return canViewTicket(user, ticket);
+  if (user.role === 'mss_manager') return true;
   if (user.role === 'tla') return sameId(effectiveAssigneeId, user.id);
   return false;
 }

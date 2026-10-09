@@ -66,7 +66,7 @@ function TableRow({ ticket, onClick }) {
           fontSize: 11.5, fontWeight: 600,
           color: hasDept ? ACCENT : '#8b5e6a',
         }} noWrap>
-          {hasDept ? ticket.department_name : 'Routing…'}
+          {hasDept ? ticket.department_name : 'All departments'}
         </Typography>
       </Box>
       <Box sx={{
@@ -106,7 +106,7 @@ function MobileCard({ ticket, onClick }) {
           }}>
             <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: hasDept ? ACCENT : '#8b5e6a' }} />
             <Typography sx={{ fontSize: 10.5, fontWeight: 600, color: hasDept ? ACCENT : '#8b5e6a' }}>
-              {hasDept ? ticket.department_name : 'Routing…'}
+              {hasDept ? ticket.department_name : 'All departments'}
             </Typography>
           </Box>
         </Box>

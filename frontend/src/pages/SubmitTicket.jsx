@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box,
@@ -16,6 +16,41 @@ import api from "../helpers/api";
 const ACCENT = "#5a8dc4";
 const PAPER = "#111d2e";
 const BORDER = "rgba(148,163,184,0.10)";
+const ERROR = "#e5484d";
+
+// ─── Validation (REQ-13 / UC01 A5) ────────────────────────────────────────────
+// Spaces alone count as empty. Limits match the inputs' maxLength.
+const TITLE_MIN = 3;
+const TITLE_MAX = 150;
+const DESC_MIN = 3;
+const DESC_MAX = 1000;
+
+function validateDetails(form) {
+  const errors = {};
+  const title = form.ticket_title.trim();
+  const desc = form.ticket_description.trim();
+  if (!title) errors.ticket_title = "Subject is required.";
+  else if (title.length < TITLE_MIN)
+    errors.ticket_title = `Subject must be at least ${TITLE_MIN} characters.`;
+  if (!desc) errors.ticket_description = "Description is required.";
+  else if (desc.length < DESC_MIN)
+    errors.ticket_description = `Description must be at least ${DESC_MIN} characters.`;
+  return errors;
+}
+
+function withoutKey(obj, key) {
+  const next = { ...obj };
+  delete next[key];
+  return next;
+}
+
+function RequiredMark() {
+  return (
+    <Typography component="span" sx={{ color: ERROR, fontWeight: 700, ml: 0.25 }}>
+      *
+    </Typography>
+  );
+}
 
 // ─── Category icon map ────────────────────────────────────────────────────────
 const CATEGORY_ICON = {
@@ -144,7 +179,7 @@ function Stepper({ step }) {
 }
 
 // ─── Step 1: Category (from API) ──────────────────────────────────────────────
-function StepCategory({ categories, selected, onSelect }) {
+function StepCategory({ categories, selected, onSelect, error, groupRef }) {
   return (
     <Box>
       <Typography
@@ -155,20 +190,38 @@ function StepCategory({ categories, selected, onSelect }) {
           mb: 0.5,
         }}
       >
-        What is this about?
+        What is this about?<RequiredMark />
       </Typography>
       <Typography
         sx={{ fontSize: 13, color: "#94a3b8", mb: 2, lineHeight: 1.6 }}
       >
         Pick the closest category. If none fits, choose{" "}
-        <span style={{ color: "#7a6fa8", fontWeight: 700 }}>Other</span> — a
-        help-desk admin will route your ticket.
+        <span style={{ color: "#7a6fa8", fontWeight: 700 }}>Other</span> — every department can see it, and the right team will pick it up.
       </Typography>
+      {error && (
+        <Typography
+          id="category-error"
+          role="alert"
+          sx={{ fontSize: 12.5, color: ERROR, fontWeight: 600, mb: 1.5 }}
+        >
+          {error}
+        </Typography>
+      )}
       <Box
+        ref={groupRef}
+        tabIndex={-1}
+        role="radiogroup"
+        aria-label="Category"
+        aria-required="true"
+        aria-invalid={!!error}
+        aria-describedby={error ? "category-error" : undefined}
         sx={{
           display: "grid",
           gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
           gap: 1.25,
+          outline: "none",
+          borderRadius: 1.5,
+          ...(error && { boxShadow: `0 0 0 1.5px ${ERROR}`, p: 0.75 }),
         }}
       >
         {categories.map((cat) => {
@@ -178,7 +231,16 @@ function StepCategory({ categories, selected, onSelect }) {
           return (
             <Box
               key={cat.category_id}
+              role="radio"
+              aria-checked={active}
+              tabIndex={0}
               onClick={() => onSelect(cat)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(cat);
+                }
+              }}
               sx={{
                 display: "flex",
                 alignItems: "center",
@@ -222,7 +284,7 @@ function StepCategory({ categories, selected, onSelect }) {
                 </Typography>
                 <Typography sx={{ fontSize: 11, color: "#94a3b8" }}>
                   {isOther
-                    ? "Help-desk admin will route"
+                    ? "Visible to all departments"
                     : `→ ${cat.category_name} dept`}
                 </Typography>
               </Box>
@@ -235,7 +297,8 @@ function StepCategory({ categories, selected, onSelect }) {
 }
 
 // ─── Step 2: Details ──────────────────────────────────────────────────────────
-function StepDetails({ form, onChange, file, onFile }) {
+function StepDetails({ form, onChange, file, onFile, errors, titleRef, descRef }) {
+  const counter = (val, max) => `${val.length}/${max}`;
   return (
     <Box>
       <Typography
@@ -243,27 +306,44 @@ function StepDetails({ form, onChange, file, onFile }) {
           fontSize: { xs: 15, md: 17 },
           fontWeight: 700,
           color: "#e3e8f0",
-          mb: 2,
+          mb: 0.5,
         }}
       >
         Tell us more
       </Typography>
+      <Typography sx={{ fontSize: 12, color: "#94a3b8", mb: 2 }}>
+        Fields marked <RequiredMark /> are required.
+      </Typography>
       <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <TextField
-          placeholder="Subject"
+          id="ticket-title"
+          label="Subject"
+          required
+          placeholder="Short summary, e.g. Projector in MSL 104 not turning on"
           value={form.ticket_title}
           onChange={(e) => onChange("ticket_title", e.target.value)}
           fullWidth
-          inputProps={{ maxLength: 150 }}
+          error={!!errors.ticket_title}
+          helperText={errors.ticket_title ?? counter(form.ticket_title, TITLE_MAX)}
+          inputRef={titleRef}
+          inputProps={{ maxLength: TITLE_MAX }}
+          InputLabelProps={{ shrink: true }}
         />
         <TextField
-          placeholder="Describe the problem"
+          id="ticket-description"
+          label="Description"
+          required
+          placeholder="Describe the problem — what happened, where, and when"
           value={form.ticket_description}
           onChange={(e) => onChange("ticket_description", e.target.value)}
           fullWidth
           multiline
           rows={4}
-          inputProps={{ maxLength: 1000 }}
+          error={!!errors.ticket_description}
+          helperText={errors.ticket_description ?? counter(form.ticket_description, DESC_MAX)}
+          inputRef={descRef}
+          inputProps={{ maxLength: DESC_MAX }}
+          InputLabelProps={{ shrink: true }}
         />
         <Box>
           <input
@@ -528,20 +608,50 @@ export default function SubmitTicket() {
       .finally(() => setCatLoading(false));
   }, []);
 
-  const handleChange = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+  const [fieldErrors, setFieldErrors] = useState({});
+  const categoryRef = useRef(null);
+  const titleRef = useRef(null);
+  const descRef = useRef(null);
 
-  const canContinue = () => {
-    if (step === 1) return !!selected;
-    if (step === 2)
-      return (
-        form.ticket_title.trim().length > 2 &&
-        form.ticket_description.trim().length > 2
-      );
+  // Typing into a field clears that field's error straight away.
+  const handleChange = (key, val) => {
+    setForm((f) => ({ ...f, [key]: val }));
+    setFieldErrors((errs) => (errs[key] ? withoutKey(errs, key) : errs));
+  };
+
+  const handleSelectCategory = (cat) => {
+    setSelected(cat);
+    setFieldErrors((errs) => withoutKey(errs, "category"));
+  };
+
+  // Blocked submissions show which field is missing and move focus to it,
+  // instead of silently disabling the button (REQ-13 / UC01 A5).
+  const validateStep = () => {
+    if (step === 1 && !selected) {
+      setFieldErrors({ category: "Please choose a category to continue." });
+      categoryRef.current?.focus();
+      return false;
+    }
+    if (step === 2 || step === 3) {
+      const errs = validateDetails(form);
+      if (Object.keys(errs).length > 0) {
+        if (step === 3) setStep(2); // send them back to the fields
+        setFieldErrors(errs);
+        // Wait a tick so step 2's inputs are mounted before focusing.
+        setTimeout(() => {
+          if (errs.ticket_title) titleRef.current?.focus();
+          else descRef.current?.focus();
+        }, 0);
+        return false;
+      }
+    }
+    setFieldErrors({});
     return true;
   };
 
   const handleNext = async () => {
     setError("");
+    if (!validateStep()) return;
     if (step < 3) {
       setStep((s) => s + 1);
       return;
@@ -607,6 +717,7 @@ export default function SubmitTicket() {
     setSuccess(false);
     setDuplicates([]);
     setDupConfirmed(false);
+    setFieldErrors({});
   };
 
   return (
@@ -743,7 +854,9 @@ export default function SubmitTicket() {
               <StepCategory
                 categories={categories}
                 selected={selected}
-                onSelect={setSelected}
+                onSelect={handleSelectCategory}
+                error={fieldErrors.category}
+                groupRef={categoryRef}
               />
             )}
 
@@ -753,6 +866,9 @@ export default function SubmitTicket() {
                 onChange={handleChange}
                 file={file}
                 onFile={setFile}
+                errors={fieldErrors}
+                titleRef={titleRef}
+                descRef={descRef}
               />
             )}
 
@@ -770,7 +886,10 @@ export default function SubmitTicket() {
         >
           {step > 1 ? (
             <Typography
-              onClick={() => setStep((s) => s - 1)}
+              onClick={() => {
+                setFieldErrors({});
+                setStep((s) => s - 1);
+              }}
               sx={{
                 fontSize: 13,
                 color: ACCENT,
@@ -785,7 +904,7 @@ export default function SubmitTicket() {
           )}
           <Button
             variant="contained"
-            disabled={!canContinue() || loading}
+            disabled={loading || dupChecking}
             onClick={handleNext}
             startIcon={
               step === 3 ? (
