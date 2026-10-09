@@ -7,6 +7,7 @@ import {
   useMediaQuery, useTheme,
 } from '@mui/material';
 import NotificationBell from './NotificationBell';
+import { disconnectSocket } from '../helpers/socket';
 
 export const DRAWER_W = 240;
 export const TOPBAR_H = 56;
@@ -297,6 +298,7 @@ export default function Shell({ children }) {
   const inboxPath = ROLE_INBOX[role] ?? '/home/inbox';
 
   const handleLogout = () => {
+    disconnectSocket(); // close the live-updates connection with the session
     localStorage.removeItem('tf_token');
     localStorage.removeItem('tf_user');
     navigate('/login');

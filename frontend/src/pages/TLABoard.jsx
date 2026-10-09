@@ -7,6 +7,7 @@ import {
   TextField, Alert, Tooltip,
 } from '@mui/material';
 import api from '../helpers/api';
+import { getSocket } from '../helpers/socket';
 import { priorityMeta, timeAgo, getSLABreaches } from '../helpers/ticketHelpers';
 
 // ─── Theme tokens (prototype palette) ─────────────────────────────────────────
@@ -468,6 +469,41 @@ function KanbanColumn({ col, tickets, draggingId, claimingId, onDragStart, onDro
   );
 }
 
+// ─── Live-update status chip ──────────────────────────────────────────────────
+const FALLBACK_POLL_MS = 15000;
+
+const LIVE_META = {
+  live:       { label: 'Live',            color: '#5a8f72', tip: 'Board updates instantly when anyone changes a ticket.' },
+  connecting: { label: 'Connecting…',     color: '#c49a4a', tip: 'Connecting to live updates.' },
+  offline:    { label: 'Reconnecting…',   color: '#c49a4a', tip: `Live connection lost — checking for changes every ${FALLBACK_POLL_MS / 1000}s until it's back.` },
+};
+
+function LiveStatus({ status }) {
+  const meta = LIVE_META[status] ?? LIVE_META.connecting;
+  return (
+    <Tooltip title={meta.tip} arrow>
+      <Box
+        role="status"
+        aria-live="polite"
+        sx={{
+          display: 'inline-flex', alignItems: 'center', gap: 0.75,
+          px: 1.1, py: 0.45, borderRadius: 1.5,
+          bgcolor: `${meta.color}18`, border: `1px solid ${meta.color}55`,
+        }}
+      >
+        <Box sx={{
+          width: 7, height: 7, borderRadius: '50%', bgcolor: meta.color,
+          ...(status === 'live' && {
+            animation: 'tfPulse 2s ease-in-out infinite',
+            '@keyframes tfPulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.35 } },
+          }),
+        }} />
+        <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: meta.color }}>{meta.label}</Typography>
+      </Box>
+    </Tooltip>
+  );
+}
+
 // ─── Main Board ───────────────────────────────────────────────────────────────
 export default function TLABoard() {
   const navigate = useNavigate();
@@ -506,6 +542,50 @@ export default function TLABoard() {
   };
 
   useEffect(() => { fetchTickets(); }, []);
+
+  // ─── Live updates (UC05/UC06, TC-BOARD-M04) ────────────────────────────────
+  // The server only says "ticket X changed"; we refetch through the scoped
+  // GET /tickets, so the board never shows anything the API wouldn't.
+  const [liveStatus, setLiveStatus] = useState('connecting');
+  const fetchRef = useRef(fetchTickets);
+  fetchRef.current = fetchTickets;
+
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) { setLiveStatus('offline'); return undefined; }
+
+    let debounce = null;
+    const refetchSoon = () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => fetchRef.current(), 250); // several changes at once → one refetch
+    };
+    const onConnect = () => {
+      setLiveStatus('live');
+      fetchRef.current(); // catch up on anything missed while disconnected
+    };
+    const onDown = () => setLiveStatus('offline');
+
+    if (socket.connected) setLiveStatus('live');
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDown);
+    socket.on('connect_error', onDown);
+    socket.on('ticket:changed', refetchSoon);
+
+    return () => {
+      clearTimeout(debounce);
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDown);
+      socket.off('connect_error', onDown);
+      socket.off('ticket:changed', refetchSoon);
+    };
+  }, []);
+
+  // UC06 A2: while the live connection is down, fall back to periodic checks.
+  useEffect(() => {
+    if (liveStatus === 'live') return undefined;
+    const id = setInterval(() => fetchRef.current(), FALLBACK_POLL_MS);
+    return () => clearInterval(id);
+  }, [liveStatus]);
 
   const handleClaim = async (ticketId) => {
     setClaimingId(ticketId);
@@ -628,6 +708,7 @@ export default function TLABoard() {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <LiveStatus status={liveStatus} />
           <Button variant="outlined" onClick={() => navigate('/tla')}
             startIcon={<span className="material-symbols-outlined" style={{ fontSize: 16 }}>dashboard</span>}
             sx={{ color: TEXT_DIM, borderColor: BORDER, fontSize: 12 }}>

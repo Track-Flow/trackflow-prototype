@@ -2,6 +2,7 @@ const pool = require("../config/db");
 const router = require("express").Router();
 const { authenticateToken } = require("../middleware/auth");
 const { notify, notifyRole } = require("../services/notifyService");
+const { emitTicketChange } = require("../services/realtime.js");
 const { singleFile } = require('../middleware/upload');
 const {
   sameId,
@@ -74,6 +75,7 @@ async function runEscalationSweep(pool) {
       }
 
       await conn.commit();
+      emitTicketChange(ticket, 'escalated');
 
       if (escalatedTo) {
         notifyRole({
@@ -276,6 +278,7 @@ router.post('/:id/escalate', authenticateToken, async (req, res) => {
     });
 
     const [rows] = await pool.query('SELECT * FROM ticket WHERE ticket_id = ?', [id]);
+    emitTicketChange(rows[0], 'escalated');
     res.json(rows[0]);
   } catch (err) {
     await conn.rollback();
@@ -416,6 +419,11 @@ router.post('/:id/flag-department', authenticateToken, async (req, res) => {
       [id]
     );
 
+    emitTicketChange(rows[0], 'flagged', {
+      previousDepartmentIds: [oldDepartmentId],
+      previousUserIds: [ticket.assigned_user_id],
+    });
+
     return res.status(200).json({ message: 'Ticket flagged as wrong department, reset to open, and is now open to any TLA.', ticket: rows[0] });
   } catch (err) {
     await conn.rollback();
@@ -524,6 +532,11 @@ router.post("/", authenticateToken, singleFile('file'), async (req, res) => {
     }
 
     await conn.commit();
+
+    emitTicketChange(
+      { ticket_id: ticketId, department_id: isOther ? null : department_id, user_id },
+      'created'
+    );
 
     // --- Notify: confirm submission to the End User (UC01 step 11) ---
     // Fire-and-forget — notifyService never throws, so this can't fail the request.
@@ -689,6 +702,7 @@ router.post("/:id/reopen", authenticateToken, async (req, res) => {
     // so the assigned TLA is who needs telling — unless they're the one who
     // did it, in which case they already know.
     const reopenedTicket = updatedRows[0];
+    emitTicketChange(reopenedTicket, 'reopened');
     if (reopenedTicket.assigned_user_id && reopenedTicket.assigned_user_id !== requesting_user_id) {
       notify({
         userId: reopenedTicket.assigned_user_id,
@@ -1029,6 +1043,11 @@ router.patch("/:id", authenticateToken, async (req, res) => {
     await conn.commit();
 
     const updatedTicket = updated[0];
+
+    emitTicketChange(updatedTicket, isClaim ? 'claimed' : 'updated', {
+      previousDepartmentIds: [ticket.department_id],
+      previousUserIds: [ticket.assigned_user_id],
+    });
 
     // ─── Notifications (fire-and-forget, post-commit) ─────────────────────────
     // Ticket owner (end user) is who these are aimed at throughout — they're

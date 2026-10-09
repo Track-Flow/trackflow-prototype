@@ -1,5 +1,7 @@
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
+const realtime = require('./services/realtime.js');
 const dotenv = require('dotenv');
 const pool = require('./config/db');
 
@@ -52,11 +54,20 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: status >= 500 ? 'Internal server error.' : err.message });
 });
 
+// One HTTP server for both Express and Socket.io (live board updates).
+// Nginx proxies /api/ and /socket.io/ to the same backend port.
+function createServer() {
+  const server = http.createServer(app);
+  realtime.init(server, { corsOrigins: allowedOrigins });
+  return server;
+}
+
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+  createServer().listen(PORT, () => {
+    console.log(`Server is running on port ${PORT} (REST + Socket.io)`);
   });
 }
 
 module.exports = app;
+module.exports.createServer = createServer;
