@@ -100,35 +100,46 @@ export function timeAgo(dateStr) {
 }
 
 
+
 /**
- * SLA compliance per department over a trailing window.
- * A ticket meets SLA if resolved within `slaHours` of creation.
- * An unresolved ticket older than `slaHours` counts as a breach.
- * Tickets still open and younger than `slaHours` are excluded (not yet due).
+ * SLA compliance per department for tickets created within [start, end].
+ * `start` / `end` are 'YYYY-MM-DD' strings (inclusive, local calendar days).
+ * Compliance is evaluated as of the end of the range (or now, if the range
+ * ends today or later):
+ *   - Resolved by then, within `slaHours` of creation  → met
+ *   - Resolved by then, after `slaHours`                → breached
+ *   - Not resolved by then, older than `slaHours`       → breached
+ *   - Not resolved by then, younger than `slaHours`     → excluded (not yet due)
  * Returns one row per department, each carrying its own filtered ticket list
  * so chart click-throughs don't need to re-filter.
  */
-export function getSlaComplianceByDept(tickets, { windowDays = 30, slaHours = 24, target = 90 } = {}) {
-  const cutoff = Date.now() - windowDays * 86400000;
-  const inWindow = tickets.filter(t => t.ticket_created_at && new Date(t.ticket_created_at).getTime() >= cutoff);
+export function getSlaComplianceByDept(tickets, { start, end, slaHours = 24, target = 90 } = {}) {
+  const startMs = start ? new Date(`${start}T00:00:00.000`).getTime() : -Infinity;
+  const endMs   = end   ? new Date(`${end}T23:59:59.999`).getTime()   : Infinity;
+  const asOf    = Math.min(Date.now(), endMs);
+  const slaMs   = slaHours * 3600000;
+
+  const inRange = tickets.filter(t => {
+    if (!t.ticket_created_at) return false;
+    const created = new Date(t.ticket_created_at).getTime();
+    return created >= startMs && created <= endMs;
+  });
 
   const byDept = {};
-  for (const t of inWindow) {
+  for (const t of inRange) {
     const dept = t.department_name ?? 'Unrouted';
     if (!byDept[dept]) byDept[dept] = { dept, tickets: [], met: 0, breached: 0 };
     byDept[dept].tickets.push(t);
 
-    const created = new Date(t.ticket_created_at).getTime();
+    const created  = new Date(t.ticket_created_at).getTime();
     const resolved = t.resolved_at ? new Date(t.resolved_at).getTime() : null;
-    const ageHours = (Date.now() - created) / 3600000;
 
-    if (resolved !== null) {
-      const resHours = (resolved - created) / 3600000;
-      resHours <= slaHours ? byDept[dept].met++ : byDept[dept].breached++;
-    } else if (ageHours > slaHours) {
+    if (resolved !== null && resolved <= asOf) {
+      resolved - created <= slaMs ? byDept[dept].met++ : byDept[dept].breached++;
+    } else if (asOf - created > slaMs) {
       byDept[dept].breached++;
     }
-    // else: still open, not yet due — excluded from both counts
+    // else: still open as of range end and not yet due — excluded from both counts
   }
 
   return Object.values(byDept)
@@ -139,6 +150,7 @@ export function getSlaComplianceByDept(tickets, { windowDays = 30, slaHours = 24
     })
     .sort((a, b) => a.dept.localeCompare(b.dept));
 }
+
 
 /** Resolution time in hours for a single ticket, or null if unresolved. */
 export function getResolutionHours(ticket) {

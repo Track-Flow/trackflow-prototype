@@ -281,12 +281,10 @@ function SlaReport({ tickets, onDrillDown }) {
   const [end, setEnd] = useState(todayIso());
   const rangeError = start && end && start > end ? 'Start date must be before end date.' : '';
 
-  const scoped = useMemo(() => filterByRange(tickets, start, end), [tickets, start, end]);
-  const windowDays = rangeDayCount(start, end);
 
   const compliance = useMemo(
-    () => getSlaComplianceByDept(scoped, { windowDays, slaHours: SLA_HOURS, target: TARGET }),
-    [scoped, windowDays]
+    () => getSlaComplianceByDept(tickets, { start, end, slaHours: SLA_HOURS, target: TARGET }),
+    [tickets, start, end]
   );
 
   const breaches  = compliance.filter(r => r.actual < r.target);

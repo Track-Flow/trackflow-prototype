@@ -72,7 +72,6 @@ const NAV = {
     { icon: 'confirmation_number', label: 'All tickets',     path: '/manager/tickets' },
     { icon: 'groups',              label: 'Departments',     path: '/manager/depts'   },
     { icon: 'analytics',           label: 'Reports',         path: '/manager/reports' },
-    { icon: 'download',            label: 'Export Reports',  path: '/manager/exports' },
     { group: 'Team' },
     { icon: 'badge',               label: 'TLAs',            path: '/manager/tlas'    },
     { group: 'Account' },
