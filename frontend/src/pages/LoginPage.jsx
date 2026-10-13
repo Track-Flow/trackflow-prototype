@@ -10,88 +10,73 @@ import {
   Divider,
   Alert,
 } from "@mui/material";
-import api from '../helpers/api.js'
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from "react-router-dom";
+import api from "../helpers/api.js";
 
-const LOGO_BLUE = "#2ec8ff";
-const BG = "#0a1628";
-const CARD_BG = "#0f1f3a";
-const BORDER = "rgba(143,162,192,0.12)";
+const ACCENT      = "#5a8dc4";
+const BG_MAIN     = "#0c1422";
+const BORDER      = "rgba(148,163,184,0.10)";
+const TEXT_MUTED  = "#64748b";
+const TEXT_DIM    = "#94a3b8";
+const TEXT_BRIGHT = "#e3e8f0";
 
-/* ── tiny TrackFlow wordmark ── */
-function TFWordmark() {
+function TFLogo() {
   return (
-    <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5, mb: 0.5 }}>
-      <Typography
+    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 1.5, mb: 3.5 }}>
+      <Box
         sx={{
-          fontFamily: '"Rubik", sans-serif',
-          fontWeight: 700,
-          fontSize: 26,
-          letterSpacing: "-0.03em",
-          color: "#e6edf7",
+          width: 40,
+          height: 40,
+          borderRadius: "8px",
+          background: ACCENT,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
-        <span style={{ color: LOGO_BLUE }}>TRACK</span>FLOW
-      </Typography>
+        <span
+          className="material-symbols-outlined"
+          style={{ fontSize: 22, color: "#fff", fontVariationSettings: "'FILL' 1" }}
+        >
+          confirmation_number
+        </span>
+      </Box>
+      <Box>
+        <Typography
+          sx={{
+            fontFamily: '"Rubik", sans-serif',
+            fontWeight: 700,
+            fontSize: 22,
+            letterSpacing: "-0.01em",
+            lineHeight: 1,
+            color: TEXT_BRIGHT,
+          }}
+        >
+          <span style={{ color: ACCENT }}>TRACK</span>FLOW
+        </Typography>
+        <Typography
+          sx={{
+            fontSize: 10.5,
+            color: TEXT_MUTED,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            mt: 0.5,
+          }}
+        >
+          Wits University · MSS
+        </Typography>
+      </Box>
     </Box>
   );
 }
 
-/* ── faint grid background ── */
-function GridBg() {
-  return (
-    <Box
-      sx={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 0,
-        pointerEvents: "none",
-        backgroundImage: `
-        linear-gradient(rgba(46,200,255,0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(46,200,255,0.04) 1px, transparent 1px)
-      `,
-        backgroundSize: "40px 40px",
-      }}
-    />
-  );
-}
-
-/* ── glow blob ── */
-function GlowBlob({
-  x = "50%",
-  y = "50%",
-  color = LOGO_BLUE,
-  size = 480,
-  opacity = 0.07,
-}) {
-  return (
-    <Box
-      sx={{
-        position: "fixed",
-        zIndex: 0,
-        pointerEvents: "none",
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        background: color,
-        filter: "blur(90px)",
-        opacity,
-        left: x,
-        top: y,
-        transform: "translate(-50%, -50%)",
-      }}
-    />
-  );
-}
-
 export default function LoginPage() {
+  const navigate = useNavigate();
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate(); // add at top of component
-
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -125,55 +110,49 @@ export default function LoginPage() {
     }
   };
 
+  const linkSx = {
+    color: ACCENT,
+    fontWeight: 600,
+    cursor: "pointer",
+    background: "none",
+    border: "none",
+    p: 0,
+    fontFamily: "inherit",
+    "&:hover": { textDecoration: "underline" },
+  };
+
   return (
     <Box
       sx={{
         minHeight: "100vh",
-        background: BG,
+        background: BG_MAIN,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         px: 2,
-        position: "relative",
-        overflow: "hidden",
+        py: 4,
       }}
     >
-      <GridBg />
-      <GlowBlob x="20%" y="30%" color={LOGO_BLUE} size={500} opacity={0.06} />
-      <GlowBlob x="80%" y="70%" color="#c084fc" size={400} opacity={0.05} />
+      <Box sx={{ width: "100%", maxWidth: 400 }}>
+        <TFLogo />
 
-      <Box
-        sx={{ position: "relative", zIndex: 1, width: "100%", maxWidth: 420 }}
-      >
-        {/* Logo + tagline */}
-        <Box sx={{ textAlign: "center", mb: 3 }}>
-          <TFWordmark />
+        <Card sx={{ p: { xs: 3, sm: 3.5 } }}>
           <Typography
             sx={{
-              fontSize: 12,
-              color: "#5b6d8a",
-              letterSpacing: "0.18em",
+              fontSize: 11,
+              fontWeight: 700,
+              color: ACCENT,
+              letterSpacing: "0.12em",
               textTransform: "uppercase",
-              fontWeight: 600,
+              mb: 0.75,
             }}
           >
-            Wits University · MSS
+            Welcome back
           </Typography>
-        </Box>
-
-        {/* Card */}
-        <Card
-          sx={{
-            p: 3.5,
-            background: CARD_BG,
-            border: `1px solid ${BORDER}`,
-            boxShadow: "0 24px 60px -12px rgba(0,0,0,0.6)",
-          }}
-        >
-          <Typography variant="h5" sx={{ color: "#e6edf7", mb: 0.5 }}>
+          <Typography variant="h5" sx={{ color: TEXT_BRIGHT, mb: 0.5 }}>
             Sign in
           </Typography>
-          <Typography sx={{ fontSize: 13.5, color: "#5b6d8a", mb: 3 }}>
+          <Typography sx={{ fontSize: 13, color: TEXT_DIM, mb: 3 }}>
             Use your MSS staff or student credentials.
           </Typography>
 
@@ -195,7 +174,7 @@ export default function LoginPage() {
               autoFocus
               fullWidth
               helperText="e.g. 123456 or EMP0012"
-              FormHelperTextProps={{ sx: { color: "#5b6d8a", fontSize: 11.5 } }}
+              FormHelperTextProps={{ sx: { color: TEXT_MUTED, fontSize: 11.5 } }}
             />
 
             <TextField
@@ -212,12 +191,9 @@ export default function LoginPage() {
                       size="small"
                       onClick={() => setShowPw((p) => !p)}
                       edge="end"
-                      sx={{ color: "#5b6d8a" }}
+                      sx={{ color: TEXT_MUTED, "&:hover": { color: TEXT_DIM } }}
                     >
-                      <span
-                        className="material-symbols-outlined"
-                        style={{ fontSize: 18 }}
-                      >
+                      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
                         {showPw ? "visibility_off" : "visibility"}
                       </span>
                     </IconButton>
@@ -226,22 +202,12 @@ export default function LoginPage() {
               }}
             />
 
-            {/* Forgot password */}
             <Box sx={{ textAlign: "right", mt: -1 }}>
               <Typography
                 component="button"
                 type="button"
                 onClick={() => {}}
-                sx={{
-                  fontSize: 12.5,
-                  color: LOGO_BLUE,
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  p: 0,
-                  fontFamily: "inherit",
-                  "&:hover": { textDecoration: "underline" },
-                }}
+                sx={{ ...linkSx, fontSize: 12.5 }}
               >
                 Forgot password?
               </Typography>
@@ -253,7 +219,7 @@ export default function LoginPage() {
               size="large"
               fullWidth
               disabled={loading}
-              sx={{ mt: 0.5, py: 1.3, fontSize: 15, fontWeight: 700 }}
+              sx={{ py: 1.2, fontSize: 14 }}
             >
               {loading ? "Signing in…" : "Sign in"}
             </Button>
@@ -261,36 +227,21 @@ export default function LoginPage() {
 
           <Divider sx={{ my: 2.5, borderColor: BORDER }} />
 
-          <Box sx={{ textAlign: "center" }}>
-            <Typography sx={{ fontSize: 13.5, color: "#5b6d8a" }}>
-              New to TrackFlow?{" "}
-              <Typography
-                component="span"
-                onClick={() => navigate('/register')}
-                sx={{
-                  color: LOGO_BLUE,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  "&:hover": { textDecoration: "underline" },
-                }}
-              >
-                Create an account
-              </Typography>
+          <Typography sx={{ fontSize: 13, color: TEXT_DIM, textAlign: "center" }}>
+            New to TrackFlow?{" "}
+            <Typography
+              component="button"
+              type="button"
+              onClick={() => navigate("/register")}
+              sx={{ ...linkSx, fontSize: 13 }}
+            >
+              Create an account
             </Typography>
-          </Box>
+          </Typography>
         </Card>
 
-        {/* Footer */}
-        <Typography
-          sx={{
-            textAlign: "center",
-            mt: 2.5,
-            fontSize: 11.5,
-            color: "#2e3e55",
-          }}
-        >
-          © {new Date().getFullYear()} TrackFlow Solutions · Mathematical
-          Sciences Support
+        <Typography sx={{ textAlign: "center", mt: 2.5, fontSize: 11, color: TEXT_MUTED, opacity: 0.6 }}>
+          © {new Date().getFullYear()} TrackFlow Solutions · Mathematical Sciences Support
         </Typography>
       </Box>
     </Box>
