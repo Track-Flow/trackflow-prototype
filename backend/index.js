@@ -13,6 +13,8 @@ const allowedOrigins = [
   'http://localhost:5173',   // Vite dev
   'https://localhost',        // nginx HTTPS
   'http://localhost',         // nginx HTTPZZ (before redirect)
+  'https://anna-gzip-whereas-vessel.trycloudflare.com'
+
 ];
 
 app.use(cors({
@@ -63,7 +65,7 @@ function createServer() {
 }
 
 if (require.main === module) {
-  const PORT = process.env.PORT || 3000;
+  const PORT = process.env.PORT || 3002;
   createServer().listen(PORT, () => {
     console.log(`Server is running on port ${PORT} (REST + Socket.io)`);
   });
