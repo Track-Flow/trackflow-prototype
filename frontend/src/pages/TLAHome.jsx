@@ -168,7 +168,33 @@ function PulseItem({ ticket }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function TLAHome() {
   const navigate = useNavigate();
-  const user     = JSON.parse(localStorage.getItem('tf_user') ?? 'null');
+  const storedUser = JSON.parse(localStorage.getItem('tf_user') ?? 'null');
+
+  // The login payload has no department_name, and department_id can go stale
+  // if an admin moves the TLA. Load the fresh profile once and use that.
+  const [user, setUser] = useState(storedUser);
+
+  useEffect(() => {
+    api.get('/users/me')
+      .then(res => {
+        const fresh = res.data?.user;
+        if (!fresh) return;
+        setUser(prev => ({ ...prev, department_id: fresh.department_id, department_name: fresh.department_name }));
+        try {
+          const stored = JSON.parse(localStorage.getItem('tf_user') ?? 'null');
+          localStorage.setItem('tf_user', JSON.stringify({
+            ...stored,
+            department_id: fresh.department_id,
+            department_name: fresh.department_name,
+          }));
+        } catch {
+          // storage unavailable — the header still uses the fresh value
+        }
+      })
+      .catch(() => {
+        // keep the stored user; the header falls back to "Your department"
+      });
+  }, []);
 
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -196,7 +222,7 @@ export default function TLAHome() {
     fetchTickets();
     const interval = setInterval(fetchTickets, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [user?.department_id]);
 
   // Derived
   const myTickets   = tickets.filter(t => (t.assigned_user_id ?? t.assignee_id) === user?.id);

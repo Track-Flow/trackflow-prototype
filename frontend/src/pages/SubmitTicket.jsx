@@ -10,6 +10,8 @@ import {
   Alert,
   Dialog,
   DialogContent,
+  InputAdornment,
+  IconButton,
 } from "@mui/material";
 import api from "../helpers/api";
 
@@ -52,42 +54,155 @@ function RequiredMark() {
   );
 }
 
-// ─── Category icon map ────────────────────────────────────────────────────────
-const CATEGORY_ICON = {
-  "it support": {
-    icon: "computer",
-    color: "#5a8dc4",
-    bg: "rgba(90,141,196,0.12)",
+// ─── Category groups & metadata ───────────────────────────────────────────────
+// Keyed by lowercase category_name. Hints and keywords are written around the
+// incidents people actually report, so search finds e.g. "broken fan".
+// Categories not listed here still show, under "More".
+const GROUPS = [
+  { id: "it", label: "IT & Systems", icon: "devices", color: "#5a8dc4" },
+  { id: "facilities", label: "Facilities", icon: "apartment", color: "#c49a4a" },
+  { id: "academic", label: "Academic & Research", icon: "school", color: "#5a8f72" },
+  { id: "events", label: "Events & Media", icon: "celebration", color: "#7a6fa8" },
+  { id: "making", label: "Making", icon: "precision_manufacturing", color: "#4fa3a5" },
+  { id: "more", label: "More", icon: "category", color: "#5a8dc4" },
+];
+
+const GROUP_BY_ID = {
+  ...Object.fromEntries(GROUPS.map((g) => [g.id, g])),
+  other: { id: "other", label: "Other", icon: "help", color: "#7a6fa8" },
+};
+
+// Shown first, in this order, when they exist.
+const POPULAR = ["hardware", "software", "physical", "scripts & book collection"];
+
+const CATEGORY_META = {
+  hardware: {
+    group: "it",
+    icon: "memory",
+    hint: "Flickering monitor, laggy keyboard, faulty device",
+    keywords: "monitor flicker flickering screen keyboard lag input delay mouse device broken workstation",
   },
-  facilities: { icon: "build", color: "#c49a4a", bg: "rgba(196,154,74,0.12)" },
-  administration: {
-    icon: "business_center",
-    color: "#7a6fa8",
-    bg: "rgba(122,111,168,0.12)",
+  software: {
+    group: "it",
+    icon: "code",
+    hint: "Network drives, accounts, logins, app errors",
+    keywords: "network drive mount mounting shared files access account provision new starter login password install app error",
   },
-  "library services": {
-    icon: "menu_book",
-    color: "#5a8f72",
-    bg: "rgba(90,143,114,0.12)",
+  pc: {
+    group: "it",
+    icon: "backup",
+    hint: "Lab PC backups that failed or need restoring",
+    keywords: "backup job failed overnight restore recovery lab pc reimage",
   },
-  hardware: { icon: "memory", color: "#5a8dc4", bg: "rgba(90,141,196,0.12)" },
-  software: { icon: "code", color: "#7a6fa8", bg: "rgba(122,111,168,0.12)" },
+  "internal systems / dev request": {
+    group: "it",
+    icon: "terminal",
+    hint: "Bugs or new features in TrackFlow and lab systems",
+    keywords: "trackflow portal website system bug feature dev request",
+  },
   physical: {
-    icon: "apartment",
-    color: "#c49a4a",
-    bg: "rgba(196,154,74,0.12)",
+    group: "facilities",
+    icon: "chair",
+    hint: "Broken fans, aircon, furniture, room equipment",
+    keywords: "fan broken hot heating aircon ac air conditioning cooling server room projector furniture",
   },
-  other: { icon: "help", color: "#7a6fa8", bg: "rgba(122,111,168,0.12)" },
+  "building & facilities": {
+    group: "facilities",
+    icon: "domain",
+    hint: "Doors, leaks, power and cleaning",
+    keywords: "door access key leak water power electricity cleaning",
+  },
+  "lab & test room setup": {
+    group: "facilities",
+    icon: "meeting_room",
+    hint: "Open or prepare a lab for a test or tutorial",
+    keywords: "lab locked open tutorial tut test exam venue room setup ready invigilation",
+  },
+  "scripts & book collection": {
+    group: "academic",
+    icon: "menu_book",
+    hint: "Collect exam scripts and books",
+    keywords: "exam scripts books collect collection textbook",
+  },
+  "research support": {
+    group: "academic",
+    icon: "science",
+    hint: "Instruments, calibration and research equipment",
+    keywords: "instrument calibration calibrate drifted readings experiment research equipment",
+  },
+  "interest group r&d": {
+    group: "academic",
+    icon: "groups",
+    hint: "Interest group projects and development",
+    keywords: "club society interest group project",
+  },
+  competitions: {
+    group: "academic",
+    icon: "emoji_events",
+    hint: "Competition entries, teams and support",
+    keywords: "hackathon olympiad contest competition team",
+  },
+  "event support": {
+    group: "events",
+    icon: "celebration",
+    hint: "Mics, sound and setup during live events",
+    keywords: "mic microphone cutting out sound event live setup venue function",
+  },
+  "audio / video / media": {
+    group: "events",
+    icon: "videocam",
+    hint: "Recording, cameras and photos",
+    keywords: "recording camera video photo media",
+  },
+  museum: {
+    group: "events",
+    icon: "museum",
+    hint: "Museum visits, tours and exhibits",
+    keywords: "museum tour exhibit display",
+  },
+  "fabrication / 3d printing": {
+    group: "making",
+    icon: "precision_manufacturing",
+    hint: "Jammed or failed 3D prints, laser cutting",
+    keywords: "3d printer print jammed stopped failed laser cut cnc fabrication",
+  },
+  other: {
+    group: "other",
+    icon: "help",
+    hint: "Every department can see it, and the right team will pick it up.",
+    keywords: "",
+  },
 };
 
 function getCategoryMeta(name = "") {
-  return (
-    CATEGORY_ICON[name.toLowerCase()] ?? {
-      icon: "category",
-      color: ACCENT,
-      bg: "rgba(90,141,196,0.12)",
+  const m = CATEGORY_META[name.trim().toLowerCase()];
+  const groupId = m?.group ?? "more";
+  const group = GROUP_BY_ID[groupId] ?? GROUP_BY_ID.more;
+  return {
+    group: groupId,
+    icon: m?.icon ?? "category",
+    hint: m?.hint ?? "",
+    keywords: m?.keywords ?? "",
+    color: group.color,
+    bg: `${group.color}1f`,
+  };
+}
+
+function matchesQuery({ cat, meta }, query) {
+  const haystack = [cat.category_name, meta.hint, meta.keywords, cat.department_name]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return query.split(/\s+/).every((term) => haystack.includes(term));
+}
+
+function onActivate(fn) {
+  return (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fn();
     }
-  );
+  };
 }
 
 // ─── Stepper ──────────────────────────────────────────────────────────────────
@@ -178,8 +293,262 @@ function Stepper({ step }) {
   );
 }
 
+// ─── Category tiles ───────────────────────────────────────────────────────────
+const TILE_GRID = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+  gap: 1.25,
+};
+
+function tileSx(color, active) {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 1.5,
+    p: 1.5,
+    borderRadius: 1.5,
+    cursor: "pointer",
+    border: `1.5px solid ${active ? color : BORDER}`,
+    bgcolor: active ? `${color}1f` : "rgba(255,255,255,0.03)",
+    transition: "border-color .15s, background-color .15s",
+    outline: "none",
+    "&:hover": { border: `1.5px solid ${color}` },
+    "&:focus-visible": { boxShadow: `0 0 0 2px ${color}` },
+  };
+}
+
+function TileIcon({ icon, color }) {
+  return (
+    <Box
+      sx={{
+        width: 36,
+        height: 36,
+        borderRadius: 1.5,
+        flexShrink: 0,
+        display: "grid",
+        placeItems: "center",
+        bgcolor: `${color}1f`,
+        color,
+      }}
+    >
+      <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
+        {icon}
+      </span>
+    </Box>
+  );
+}
+
+function CategoryTile({ cat, meta, active, onSelect }) {
+  return (
+    <Box
+      role="radio"
+      aria-checked={active}
+      tabIndex={0}
+      onClick={() => onSelect(cat)}
+      onKeyDown={onActivate(() => onSelect(cat))}
+      sx={tileSx(meta.color, active)}
+    >
+      <TileIcon icon={meta.icon} color={meta.color} />
+      <Box sx={{ minWidth: 0, flex: 1 }}>
+        <Typography
+          sx={{ fontSize: 13.5, fontWeight: 600, color: "#e3e8f0", lineHeight: 1.3 }}
+        >
+          {cat.category_name}
+        </Typography>
+        {meta.hint && (
+          <Typography
+            sx={{ fontSize: 11.5, color: "#94a3b8", lineHeight: 1.4, mt: 0.25 }}
+          >
+            {meta.hint}
+          </Typography>
+        )}
+        {cat.department_name && (
+          <Typography sx={{ fontSize: 10.5, color: "#64748b", mt: 0.25 }}>
+            → {cat.department_name}
+          </Typography>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+function GroupTile({ group, items, onOpen, hasSelection }) {
+  const names = items.map((i) => i.cat.category_name);
+  const preview =
+    names.slice(0, 2).join(", ") + (names.length > 2 ? ` +${names.length - 2}` : "");
+  return (
+    <Box
+      role="button"
+      tabIndex={0}
+      aria-label={`${group.label}: ${names.length} categories`}
+      onClick={() => onOpen(group.id)}
+      onKeyDown={onActivate(() => onOpen(group.id))}
+      sx={tileSx(group.color, hasSelection)}
+    >
+      <TileIcon icon={group.icon} color={group.color} />
+      <Box sx={{ minWidth: 0, flex: 1 }}>
+        <Typography
+          sx={{ fontSize: 13.5, fontWeight: 600, color: "#e3e8f0", lineHeight: 1.3 }}
+        >
+          {group.label}
+        </Typography>
+        <Typography sx={{ fontSize: 11.5, color: "#64748b", mt: 0.25 }}>
+          {preview}
+        </Typography>
+      </Box>
+      <span
+        className="material-symbols-outlined"
+        style={{ fontSize: 18, color: "#64748b" }}
+        aria-hidden="true"
+      >
+        chevron_right
+      </span>
+    </Box>
+  );
+}
+
+function SectionLabel({ color, children }) {
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1 }}>
+      <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: color }} />
+      <Typography
+        sx={{
+          fontSize: 10.5,
+          fontWeight: 700,
+          color: "#94a3b8",
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+        }}
+      >
+        {children}
+      </Typography>
+    </Box>
+  );
+}
+
 // ─── Step 1: Category (from API) ──────────────────────────────────────────────
+// Most-used categories up front, the rest behind groups, search across all.
 function StepCategory({ categories, selected, onSelect, error, groupRef }) {
+  const [query, setQuery] = useState("");
+  const [openGroup, setOpenGroup] = useState(null);
+  const q = query.trim().toLowerCase();
+
+  const enriched = categories.map((cat) => ({
+    cat,
+    meta: getCategoryMeta(cat.category_name),
+  }));
+  const otherItem = enriched.find((e) => e.meta.group === "other");
+  const regular = enriched
+    .filter((e) => e.meta.group !== "other")
+    .sort((a, b) => a.cat.category_name.localeCompare(b.cat.category_name));
+
+  const popular = POPULAR.map((name) =>
+    regular.find((e) => e.cat.category_name.toLowerCase() === name),
+  ).filter(Boolean);
+
+  const groups = GROUPS.map((g) => ({
+    group: g,
+    items: regular.filter((e) => e.meta.group === g.id),
+  })).filter((g) => g.items.length > 0);
+
+  const isActive = (cat) => selected?.category_id === cat.category_id;
+  const tiles = (items) => (
+    <Box sx={TILE_GRID}>
+      {items.map(({ cat, meta }) => (
+        <CategoryTile
+          key={cat.category_id}
+          cat={cat}
+          meta={meta}
+          active={isActive(cat)}
+          onSelect={onSelect}
+        />
+      ))}
+    </Box>
+  );
+
+  let content;
+  if (q) {
+    const hits = regular.filter((e) => matchesQuery(e, q));
+    content = hits.length ? (
+      tiles(hits)
+    ) : (
+      <Box
+        sx={{
+          p: 2.5,
+          borderRadius: 1.5,
+          textAlign: "center",
+          border: `1px dashed ${BORDER}`,
+        }}
+      >
+        <Typography sx={{ fontSize: 13, color: "#94a3b8" }}>
+          No category matches “{query.trim()}”. Try other words, or choose Other below.
+        </Typography>
+      </Box>
+    );
+  } else if (openGroup) {
+    const g = groups.find((x) => x.group.id === openGroup);
+    content = (
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, fontSize: 13 }}>
+          <Typography
+            component="button"
+            type="button"
+            onClick={() => setOpenGroup(null)}
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 0.5,
+              background: "none",
+              border: 0,
+              p: 0,
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: 600,
+              color: ACCENT,
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+              arrow_back
+            </span>
+            All groups
+          </Typography>
+          <Typography sx={{ fontSize: 13, color: "#475569" }}>/</Typography>
+          <Typography sx={{ fontSize: 13, color: "#e3e8f0" }}>
+            {g?.group.label}
+          </Typography>
+        </Box>
+        {g && tiles(g.items)}
+      </Box>
+    );
+  } else {
+    content = (
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 2.25 }}>
+        {popular.length > 0 && (
+          <Box>
+            <SectionLabel color={ACCENT}>Most used</SectionLabel>
+            {tiles(popular)}
+          </Box>
+        )}
+        <Box>
+          <SectionLabel color="#94a3b8">Or browse by group</SectionLabel>
+          <Box sx={TILE_GRID}>
+            {groups.map(({ group, items }) => (
+              <GroupTile
+                key={group.id}
+                group={group}
+                items={items}
+                onOpen={setOpenGroup}
+                hasSelection={items.some((i) => isActive(i.cat))}
+              />
+            ))}
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
+
+  const otherActive = otherItem && isActive(otherItem.cat);
+
   return (
     <Box>
       <Typography
@@ -192,12 +561,50 @@ function StepCategory({ categories, selected, onSelect, error, groupRef }) {
       >
         What is this about?<RequiredMark />
       </Typography>
-      <Typography
-        sx={{ fontSize: 13, color: "#94a3b8", mb: 2, lineHeight: 1.6 }}
-      >
-        Pick the closest category. If none fits, choose{" "}
-        <span style={{ color: "#7a6fa8", fontWeight: 700 }}>Other</span> — every department can see it, and the right team will pick it up.
+      <Typography sx={{ fontSize: 13, color: "#94a3b8", mb: 2, lineHeight: 1.6 }}>
+        Search, pick a common one, or open a group.
       </Typography>
+
+      <TextField
+        id="category-search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setQuery("");
+        }}
+        placeholder="Try “broken fan”, “exam scripts”, “3D printer”"
+        size="small"
+        fullWidth
+        inputProps={{ "aria-label": "Search categories" }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: 18, color: "#64748b" }}
+              >
+                search
+              </span>
+            </InputAdornment>
+          ),
+          endAdornment: query ? (
+            <InputAdornment position="end">
+              <IconButton
+                size="small"
+                aria-label="Clear search"
+                onClick={() => setQuery("")}
+                sx={{ color: "#64748b" }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                  close
+                </span>
+              </IconButton>
+            </InputAdornment>
+          ) : null,
+        }}
+        sx={{ mb: 2 }}
+      />
+
       {error && (
         <Typography
           id="category-error"
@@ -207,6 +614,7 @@ function StepCategory({ categories, selected, onSelect, error, groupRef }) {
           {error}
         </Typography>
       )}
+
       <Box
         ref={groupRef}
         tabIndex={-1}
@@ -216,81 +624,64 @@ function StepCategory({ categories, selected, onSelect, error, groupRef }) {
         aria-invalid={!!error}
         aria-describedby={error ? "category-error" : undefined}
         sx={{
-          display: "grid",
-          gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-          gap: 1.25,
           outline: "none",
           borderRadius: 1.5,
           ...(error && { boxShadow: `0 0 0 1.5px ${ERROR}`, p: 0.75 }),
         }}
       >
-        {categories.map((cat) => {
-          const meta = getCategoryMeta(cat.category_name);
-          const active = selected?.category_id === cat.category_id;
-          const isOther = cat.category_name.toLowerCase() === "other";
-          return (
-            <Box
-              key={cat.category_id}
-              role="radio"
-              aria-checked={active}
-              tabIndex={0}
-              onClick={() => onSelect(cat)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onSelect(cat);
-                }
-              }}
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 1.5,
-                p: { xs: 1.5, md: 2 },
-                borderRadius: 1.5,
-                cursor: "pointer",
-                border: `1.5px solid ${active ? meta.color : BORDER}`,
-                bgcolor: active ? meta.bg : "rgba(255,255,255,0.03)",
-                transition: "all .15s",
-                "&:hover": {
-                  border: `1.5px solid ${meta.color}`,
-                  bgcolor: meta.bg,
-                },
-              }}
+        {content}
+
+        {otherItem && (
+          <Box
+            sx={{
+              mt: 2,
+              pt: 2,
+              borderTop: `1px solid ${BORDER}`,
+              display: "flex",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 1.25,
+            }}
+          >
+            <span
+              className="material-symbols-outlined"
+              style={{ fontSize: 20, color: "#7a6fa8" }}
+              aria-hidden="true"
             >
-              <Box
-                sx={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 1.5,
-                  flexShrink: 0,
-                  display: "grid",
-                  placeItems: "center",
-                  bgcolor: meta.bg,
-                  color: meta.color,
-                }}
-              >
-                <span
-                  className="material-symbols-outlined"
-                  style={{ fontSize: 20 }}
-                >
-                  {meta.icon}
-                </span>
-              </Box>
-              <Box>
-                <Typography
-                  sx={{ fontSize: 13.5, fontWeight: 600, color: "#e3e8f0" }}
-                >
-                  {cat.category_name}
+              help
+            </span>
+            {otherActive ? (
+              <Typography sx={{ fontSize: 13, color: "#e3e8f0" }}>
+                <b>Other</b> selected. Every department can see this ticket.
+              </Typography>
+            ) : (
+              <>
+                <Typography sx={{ fontSize: 13, color: "#94a3b8" }}>
+                  Not sure where it fits?
                 </Typography>
-                <Typography sx={{ fontSize: 11, color: "#94a3b8" }}>
-                  {isOther
-                    ? "Visible to all departments"
-                    : `→ ${cat.category_name} dept`}
-                </Typography>
-              </Box>
-            </Box>
-          );
-        })}
+                <Box
+                  role="radio"
+                  aria-checked={false}
+                  tabIndex={0}
+                  onClick={() => onSelect(otherItem.cat)}
+                  onKeyDown={onActivate(() => onSelect(otherItem.cat))}
+                  sx={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "#7a6fa8",
+                    cursor: "pointer",
+                    outline: "none",
+                    borderRadius: 0.5,
+                    "&:hover": { textDecoration: "underline" },
+                    "&:focus-visible": { boxShadow: "0 0 0 2px #7a6fa8" },
+                  }}
+                >
+                  Choose Other
+                </Box>
+              </>
+            )}
+          </Box>
+        )}
       </Box>
     </Box>
   );
@@ -420,6 +811,7 @@ function StepReview({ form, category, file }) {
     mb: 0.5,
   };
   const valueSx = { fontSize: 13.5, color: "#e3e8f0", fontWeight: 500 };
+  const isOther = category?.category_name?.toLowerCase() === "other";
   return (
     <Box>
       <Typography
@@ -443,6 +835,13 @@ function StepReview({ form, category, file }) {
         <Box sx={{ mb: 2 }}>
           <Typography sx={labelSx}>Category</Typography>
           <Typography sx={valueSx}>{category?.category_name}</Typography>
+          <Typography sx={{ fontSize: 11.5, color: "#94a3b8", mt: 0.25 }}>
+            {isOther
+              ? "Visible to all departments"
+              : category?.department_name
+                ? `Goes to ${category.department_name}`
+                : ""}
+          </Typography>
         </Box>
         <Box sx={{ mb: 2 }}>
           <Typography sx={labelSx}>Subject</Typography>
@@ -712,7 +1111,7 @@ export default function SubmitTicket() {
     setStep(1);
     setSelected(null);
     setForm({ ticket_title: "", ticket_description: "" });
-    setFile(null); // was: setFiles([])
+    setFile(null);
     setNewId(null);
     setSuccess(false);
     setDuplicates([]);
